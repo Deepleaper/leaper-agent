@@ -183,7 +183,7 @@ def copilot_device_code_login(
         headers={
             "Accept": "application/json",
             "Content-Type": "application/x-www-form-urlencoded",
-            "User-Agent": "HermesAgent/1.0",
+            "User-Agent": "LeaperAgent/1.0",
         },
     )
 
@@ -229,7 +229,7 @@ def copilot_device_code_login(
             headers={
                 "Accept": "application/json",
                 "Content-Type": "application/x-www-form-urlencoded",
-                "User-Agent": "HermesAgent/1.0",
+                "User-Agent": "LeaperAgent/1.0",
             },
         )
 

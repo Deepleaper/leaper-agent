@@ -1,4 +1,4 @@
-"""Leaper CLI — v0.9.0 产品级安装体验
+"""Leaper CLI — v0.9.3 产品级安装体验
 
 Commands:
   leaper init [--template NAME]  交互式向导，生成 leaper.yaml + .env
@@ -82,7 +82,7 @@ def _print_menu(options: list[str]) -> int:
 
 def _banner() -> None:
     _cprint(
-        "\n[bold cyan]Leaper Agent[/bold cyan] [dim]v0.9.0[/dim]  "
+        "\n[bold cyan]Leaper Agent[/bold cyan] [dim]v0.9.3[/dim]  "
         "[dim]Self-Evolving AI Agent Framework[/dim]\n"
     )
 
@@ -117,6 +117,32 @@ def cmd_init(workspace: str = ".", template: str = "", name: str = "") -> None:
 
     _cprint("[bold]👋 欢迎使用 Leaper Agent！[/bold]\n")
 
+    # ── 模板选择 ─────────────────────────────────────────────────────────────
+    if not template:
+        _cprint("[bold]要使用模板吗？（推荐首次使用者选择模板）[/bold]")
+        # Scan templates/ directory
+        templates_dir = Path(__file__).parent / "templates"
+        template_options = []
+        if templates_dir.exists():
+            for d in sorted(templates_dir.iterdir()):
+                if d.is_dir() and (d / "template.yaml").exists():
+                    tmpl_name = d.name
+                    # Try to read display name from template.yaml
+                    try:
+                        import yaml as _yaml
+                        meta = _yaml.safe_load((d / "template.yaml").read_text(encoding="utf-8"))
+                        display = meta.get("displayName", tmpl_name)
+                        desc = meta.get("description", "")
+                        template_options.append((tmpl_name, f"{display} — {desc}" if desc else display))
+                    except Exception:
+                        template_options.append((tmpl_name, tmpl_name))
+
+        menu_items = [opt[1] for opt in template_options] + ["从零开始（空白配置）"]
+        choice = _print_menu(menu_items)
+        if choice <= len(template_options):
+            template = template_options[choice - 1][0]
+            _cprint(f"\n[green]✓[/green] 使用模板：{template}\n")
+
     # ── 模板模式 ─────────────────────────────────────────────────────────────
     if template:
         _cprint(f"[bold]使用模板：{template}[/bold]\n")
@@ -136,6 +162,16 @@ def cmd_init(workspace: str = ".", template: str = "", name: str = "") -> None:
             _cprint(f"[yellow]⚠ 模板加载失败（{exc}），继续手动配置[/yellow]\n")
 
     # ── Q1: 名字 ─────────────────────────────────────────────────────────────
+    if not name and template:
+        # Auto-fill name from template
+        try:
+            import yaml as _yaml
+            tmpl_yaml = Path(__file__).parent / "templates" / template / "template.yaml"
+            if tmpl_yaml.exists():
+                meta = _yaml.safe_load(tmpl_yaml.read_text(encoding="utf-8"))
+                name = meta.get("displayName", meta.get("name", ""))
+        except Exception:
+            pass
     if not name:
         _cprint("[bold]1/4 给你的 AI 取个名字：[/bold]")
         name = _ask("").strip() or "我的 AI 助手"
@@ -386,6 +422,17 @@ def cmd_run(workspace: str = ".") -> None:
     leaper_home = Path(os.environ.get("LEAPER_HOME", str(Path.home() / ".leaper")))
     leaper_home.mkdir(parents=True, exist_ok=True)
     write_hermes_config(cfg, leaper_home)
+
+    # Copy .env and .md files to ~/.leaper/ if not already there
+    import shutil
+    ws = Path(workspace).resolve()
+    env_src = ws / ".env"
+    if env_src.exists():
+        shutil.copy2(env_src, leaper_home / ".env")
+    for md_name in ("EGO.md", "SOUL.md", "IDENTITY.md", "USER.md", "MEMORY.md"):
+        md_src = ws / md_name
+        if md_src.exists():
+            shutil.copy2(md_src, leaper_home / md_name)
 
     channel = cfg.get("channel", {})
     channel_type = channel.get("type", "")
