@@ -1,0 +1,156 @@
+"""Leaper Workshop — template marketplace for Leaper Agent workspaces.
+
+Provides local and remote template discovery and download.
+Remote source: https://github.com/Deepleaper/leaper-templates
+
+Usage:
+    from leaper_workshop import list_templates, download_template
+
+    templates = list_templates()
+    files_written = download_template("ceo-coach", "./my-workspace")
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import shutil
+import urllib.request
+from pathlib import Path
+from typing import Any
+
+logger = logging.getLogger(__name__)
+
+REMOTE_URL = "https://raw.githubusercontent.com/Deepleaper/leaper-templates/main/index.json"
+_TEMPLATES_DIR = Path(__file__).parent / "templates"
+_FETCH_TIMEOUT = 8
+
+
+def list_templates() -> list[dict[str, Any]]:
+    """Return combined list of local + remote templates.
+
+    Remote fetch is attempted first and merged with local.
+    Falls back to local-only when network is unavailable.
+    """
+    local = _load_local_templates()
+    try:
+        remote = _fetch_remote_index()
+        by_name: dict[str, dict] = {t["name"]: t for t in local}
+        for t in remote:
+            if t["name"] not in by_name:
+                t.setdefault("source", "remote")
+                by_name[t["name"]] = t
+        return list(by_name.values())
+    except Exception as exc:
+        logger.debug("Workshop: remote fetch failed, using local only: %s", exc)
+        return local
+
+
+def download_template(name: str, target_dir: str) -> list[str]:
+    """Copy or download template files into target_dir.
+
+    Tries local bundled templates first, then falls back to remote GitHub download.
+
+    Returns list of filenames written (skips files that already exist).
+    Raises RuntimeError if the template cannot be found anywhere.
+    """
+    target = Path(target_dir)
+    target.mkdir(parents=True, exist_ok=True)
+
+    local_path = _TEMPLATES_DIR / name
+    if local_path.exists() and local_path.is_dir():
+        return _copy_local_template(local_path, target)
+
+    try:
+        return _download_remote_template(name, target)
+    except Exception as exc:
+        raise RuntimeError(
+            f"Template '{name}' not found locally and remote download failed: {exc}"
+        ) from exc
+
+
+def get_template_meta(name: str) -> dict[str, Any] | None:
+    """Return metadata dict for a named template, or None if not found."""
+    for t in list_templates():
+        if t.get("name") == name:
+            return t
+    return None
+
+
+# ── Internal helpers ──────────────────────────────────────────────────────────
+
+def _load_local_templates() -> list[dict[str, Any]]:
+    if not _TEMPLATES_DIR.exists():
+        return []
+    results: list[dict[str, Any]] = []
+    for item in sorted(_TEMPLATES_DIR.iterdir()):
+        if not item.is_dir():
+            continue
+        meta_file = item / "template.yaml"
+        if meta_file.exists():
+            try:
+                import yaml
+                data: dict = yaml.safe_load(meta_file.read_text(encoding="utf-8")) or {}
+                data.setdefault("source", "local")
+                results.append(data)
+            except Exception as exc:
+                logger.warning("Workshop: cannot parse %s: %s", meta_file, exc)
+        else:
+            results.append({
+                "name": item.name,
+                "displayName": item.name,
+                "description": "(local template — no template.yaml found)",
+                "source": "local",
+            })
+    return results
+
+
+def _fetch_remote_index() -> list[dict[str, Any]]:
+    req = urllib.request.Request(
+        REMOTE_URL,
+        headers={"User-Agent": "leaper-agent/0.7.0"},
+    )
+    with urllib.request.urlopen(req, timeout=_FETCH_TIMEOUT) as resp:
+        data: dict = json.loads(resp.read())
+    return data.get("templates", [])
+
+
+def _copy_local_template(src: Path, target: Path) -> list[str]:
+    written: list[str] = []
+    for item in sorted(src.iterdir()):
+        if item.name == "template.yaml":
+            continue
+        dest = target / item.name
+        if not dest.exists():
+            shutil.copy2(item, dest)
+            written.append(item.name)
+            logger.info("Workshop: copied %s", item.name)
+    return written
+
+
+def _download_remote_template(name: str, target: Path) -> list[str]:
+    base = f"https://raw.githubusercontent.com/Deepleaper/leaper-templates/main/{name}"
+
+    yaml_url = f"{base}/template.yaml"
+    req = urllib.request.Request(yaml_url, headers={"User-Agent": "leaper-agent/0.7.0"})
+    with urllib.request.urlopen(req, timeout=_FETCH_TIMEOUT) as resp:
+        import yaml
+        meta: dict = yaml.safe_load(resp.read()) or {}
+
+    files: list[str] = meta.get("files", [])
+    if not files:
+        raise ValueError(f"Remote template '{name}' has no files listed in template.yaml")
+
+    written: list[str] = []
+    for fname in files:
+        dest = target / fname
+        if dest.exists():
+            continue
+        file_url = f"{base}/{fname}"
+        req2 = urllib.request.Request(file_url, headers={"User-Agent": "leaper-agent/0.7.0"})
+        with urllib.request.urlopen(req2, timeout=_FETCH_TIMEOUT) as resp2:
+            dest.write_bytes(resp2.read())
+        written.append(fname)
+        logger.info("Workshop: downloaded %s", fname)
+
+    return written

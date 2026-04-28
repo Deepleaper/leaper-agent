@@ -1,0 +1,22 @@
+name: My AI Agent
+
+provider:
+  type: openai           # openai | anthropic | ollama | openrouter | openai-compatible
+  model: gpt-4o
+  baseUrl: https://api.openai.com/v1
+  apiKey: sk-your-key    # or set OPENAI_API_KEY / ANTHROPIC_API_KEY in .env
+
+channel:
+  type: telegram         # telegram | discord | api | none
+  token: 'your-bot-token'
+
+brain:
+  enabled: true
+  dbPath: .leaper/brain.db   # local SQLite; relative to workspace dir
+
+evolution:
+  enabled: true
+  l2Threshold: 10        # trigger L2 Skill Generate every N conversations
+  l3CronHours: 6         # trigger L3 Cross-Skill every N hours
+
+# proxy: 'http://127.0.0.1:10809'   # HTTP/SOCKS5 proxy (optional)

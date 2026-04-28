@@ -1,0 +1,9 @@
+name: ceo-coach
+displayName: '🎯 CEO Coach — 创业决策教练'
+version: 2.0.0
+author: Deepleaper
+description: '为创业者提供战略决策、商业模式、融资建议的 AI 教练'
+files: [EGO.md, SOUL.md, IDENTITY.md, USER.md, MEMORY.md, AGENTS.md]
+config:
+  suggestedModel: claude-opus-4-20250514
+  brainEnabled: true

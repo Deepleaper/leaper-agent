@@ -1,0 +1,16 @@
+name: CEO Coach
+provider:
+  type: openai-compatible
+  model: ray_MaaS_Cl_Opus_4.7_20260416_cache
+  baseUrl: http://122.193.22.206:8235/v1
+  apiKey: sk-0dyWto1WwjLwJyZELld2-w
+channel:
+  type: telegram
+  token: '8771003622:AAHjEl4hoXp-FrzgLvGWEwezK2c7TJHGN-Q'
+brain:
+  enabled: true
+  dbPath: .leaper/brain.db
+evolution:
+  enabled: true
+  l2Threshold: 10
+# proxy: 'http://127.0.0.1:10809'  # 远程机不需要

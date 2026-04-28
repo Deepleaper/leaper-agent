@@ -1,0 +1,8 @@
+name: leaper
+display_name: Leaper Brain
+description: SQLite-backed local knowledge store with L0-L5 evolution engine
+version: 0.7.0
+author: Deepleaper
+provider_class: plugins.memory.leaper.provider.LeaperMemoryProvider
+config_key: memory.provider
+requires: []

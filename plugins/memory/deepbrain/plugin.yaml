@@ -1,0 +1,8 @@
+name: deepbrain
+display_name: DeepBrain Memory
+description: Page/chunk SQLite brain with LIKE search — Leaper's persistent knowledge store
+version: 0.7.0
+author: Deepleaper
+provider_class: plugins.memory.deepbrain.provider.DeepBrainMemoryProvider
+config_key: memory.provider
+requires: []
