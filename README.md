@@ -8,7 +8,7 @@
 <tr><td><b>真正的记忆，不是笔记本</b></td><td>现有 Agent 框架的 memory 本质是"LLM 往文件追加文本"。Leaper 的 DeepBrain 引擎对每轮对话做四维结构化提取（任务/策略/结果/洞察），经过 4Gate 质量门控才写入。相似度 > 0.85 的内容自动去重。BM25 + 向量 RRF 混合召回，不再把全部记忆塞进 context。</td></tr>
 <tr><td><b>越用越聪明，可验证</b></td><td>L1 提取经验 → L2 聚类为可复用技能 → L3 合并/淘汰/晋升技能 → L4 构建用户心智模型 → L5 一致性校验 + 回归防护。每一层都有质量门控和实测数据，不是 marketing 口号。</td></tr>
 <tr><td><b>LLM 分层降级</b></td><td>L0-L2 的 embedding 和提取使用本地 Ollama 小模型（qwen2.5:7b / nomic-embed-text），只有 L3-L4 的归纳推理才调云端 LLM。高频操作零 API 成本。</td></tr>
-<tr><td><b>产品级安装体验</b></td><td><code>git clone</code> + <code>pip install -e ".[all]"</code> + <code>leaper init</code> + <code>leaper run</code> — 交互式向导，全程不需要手动改配置文件。纯 Python，无 C++ 编译依赖。</td></tr>
+<tr><td><b>产品级安装体验</b></td><td><code>pip install leaper-agent && leaper init && leaper run</code> — 交互式向导，全程不需要手动改配置文件。纯 Python，无 C++ 编译依赖。</td></tr>
 <tr><td><b>15+ 平台开箱即用</b></td><td>Telegram · Discord · Slack · WhatsApp · Signal · 飞书 · 钉钉 · Matrix · Email · Home Assistant · API · CLI — 单 gateway 进程连接所有平台。</td></tr>
 <tr><td><b>零配置搜索</b></td><td>DuckDuckGo 兜底，不需要任何 API Key。配了 Firecrawl / Tavily 自动升级为深度搜索。</td></tr>
 <tr><td><b>模板系统</b></td><td><code>leaper init --template ceo-coach</code> 一行创建专业 AI 员工。CEO Coach 模板：苏格拉底式教练 + 40 个商业分析框架 + 六层记忆。更多模板持续发布。</td></tr>
@@ -605,9 +605,7 @@ DuckDuckGo（完全免费，零配置，无限制）
 ## Quick Install
 
 ```bash
-git clone https://github.com/Deepleaper/leaper-agent.git
-cd leaper-agent
-pip install -e ".[all]"
+pip install leaper-agent
 ```
 
 **系统要求**：Python ≥ 3.10，无需 C++ 编译器，无需 GPU。
