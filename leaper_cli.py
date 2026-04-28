@@ -382,6 +382,7 @@ def _write_dotenv(
     lines.append("# Leaper defaults — do not expose internals to users")
     lines.append("TELEGRAM_REPLY_TO_MODE=off")
     lines.append("HERMES_SHOW_TOOL_CALLS=false")
+    lines.append("HERMES_TOOL_PROGRESS_MODE=off")
     lines.append("GATEWAY_ALLOW_ALL_USERS=true")
 
     (workspace / ".env").write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -758,6 +759,197 @@ def _bootstrap_env(workspace: str) -> None:
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 
+# ── leaper config ─────────────────────────────────────────────────────────────
+
+def cmd_config(
+    api_key: str = "",
+    base_url: str = "",
+    model: str = "",
+    proxy: str = "",
+    show: bool = False,
+) -> None:
+    """全局配置（API Key、模型、代理），所有 agent 共享。
+
+    leaper config --api-key sk-xxx --base-url http://... --proxy http://127.0.0.1:10809
+    leaper config --show  查看当前配置
+    """
+    _banner()
+    global_path = Path.home() / ".leaper" / "global.yaml"
+    global_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Load existing
+    existing: dict[str, Any] = {}
+    if global_path.exists():
+        try:
+            import yaml
+            existing = yaml.safe_load(global_path.read_text(encoding="utf-8")) or {}
+        except Exception:
+            pass
+
+    if show:
+        if not existing:
+            _cprint("[yellow]尚未配置全局参数。运行 leaper config --api-key ... 进行配置。[/yellow]")
+        else:
+            _cprint("[bold]当前全局配置：[/bold]")
+            for k, v in existing.items():
+                display_v = v
+                if k == "api_key" and isinstance(v, str) and len(v) > 8:
+                    display_v = v[:4] + "..." + v[-4:]
+                _cprint(f"  {k}: {display_v}")
+        return
+
+    if not any([api_key, base_url, model, proxy]):
+        # Interactive mode
+        _cprint("[bold]全局配置（所有 agent 共享）[/bold]\n")
+        api_key = _ask("API Key", default=existing.get("api_key", ""), password=True)
+        base_url = _ask("Base URL", default=existing.get("base_url", ""))
+        model = _ask("默认模型", default=existing.get("model", ""))
+        proxy = _ask("代理地址（如 http://127.0.0.1:10809，不需要留空）", default=existing.get("proxy", ""))
+
+    if api_key:
+        existing["api_key"] = api_key
+    if base_url:
+        existing["base_url"] = base_url
+    if model:
+        existing["model"] = model
+    if proxy:
+        existing["proxy"] = proxy
+
+    try:
+        import yaml
+        global_path.write_text(yaml.dump(existing, allow_unicode=True, default_flow_style=False), encoding="utf-8")
+        _cprint(f"\n[green]✅ 全局配置已保存到 {global_path}[/green]")
+    except ImportError:
+        # Fallback without yaml
+        lines = [f"{k}: '{v}'" for k, v in existing.items()]
+        global_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        _cprint(f"\n[green]✅ 全局配置已保存到 {global_path}[/green]")
+
+
+# ── leaper create ─────────────────────────────────────────────────────────────
+
+def cmd_create(template: str = "", bot_token: str = "", name: str = "") -> None:
+    """一条命令创建 agent：leaper create ceo-coach --bot-token xxx
+
+    自动继承全局配置（API Key、模型、代理）。只需指定模板和 bot token。
+    """
+    _banner()
+
+    # Load global config
+    global_path = Path.home() / ".leaper" / "global.yaml"
+    global_cfg: dict[str, Any] = {}
+    if global_path.exists():
+        try:
+            import yaml
+            global_cfg = yaml.safe_load(global_path.read_text(encoding="utf-8")) or {}
+        except Exception:
+            pass
+
+    if not global_cfg.get("api_key"):
+        _cprint("[red]❌ 请先运行 leaper config 配置全局 API Key[/red]")
+        sys.exit(1)
+
+    # Template selection
+    if not template:
+        _cprint("[bold]选择模板：[/bold]")
+        templates_dir = Path(__file__).parent / "templates"
+        template_options = []
+        if templates_dir.exists():
+            for d in sorted(templates_dir.iterdir()):
+                if d.is_dir() and (d / "template.yaml").exists():
+                    try:
+                        import yaml as _yaml
+                        meta = _yaml.safe_load((d / "template.yaml").read_text(encoding="utf-8"))
+                        display = meta.get("displayName", d.name)
+                        desc = meta.get("description", "")
+                        template_options.append((d.name, f"{display} — {desc}" if desc else display))
+                    except Exception:
+                        template_options.append((d.name, d.name))
+
+        if not template_options:
+            _cprint("[red]❌ 未找到模板。请检查 templates/ 目录。[/red]")
+            sys.exit(1)
+
+        menu_items = [opt[1] for opt in template_options]
+        choice = _print_menu(menu_items)
+        template = template_options[choice - 1][0]
+
+    # Agent name from template
+    if not name:
+        try:
+            import yaml as _yaml
+            tmpl_yaml = Path(__file__).parent / "templates" / template / "template.yaml"
+            if tmpl_yaml.exists():
+                meta = _yaml.safe_load(tmpl_yaml.read_text(encoding="utf-8"))
+                name = meta.get("displayName", meta.get("name", template))
+        except Exception:
+            name = template
+
+    # Bot token
+    if not bot_token:
+        _cprint("\n[bold]Telegram Bot Token（从 @BotFather 获取）：[/bold]")
+        bot_token = _ask("").strip()
+
+    # Create agent directory
+    agents_dir = Path.home() / ".leaper" / "agents" / template
+    agents_dir.mkdir(parents=True, exist_ok=True)
+
+    # Copy template .md files
+    import shutil
+    tmpl_dir = Path(__file__).parent / "templates" / template
+    if tmpl_dir.exists():
+        copied = []
+        for f in tmpl_dir.iterdir():
+            if f.suffix == ".md":
+                shutil.copy2(f, agents_dir / f.name)
+                copied.append(f.name)
+        if copied:
+            _cprint(f"[dim]模板文件：{', '.join(copied)}[/dim]")
+
+    # Generate leaper.yaml
+    provider = "custom" if global_cfg.get("base_url") else "openai"
+    model_name = global_cfg.get("model", "gpt-4o")
+    api_key = global_cfg.get("api_key", "")
+    base_url = global_cfg.get("base_url", "")
+    proxy = global_cfg.get("proxy", "")
+
+    _write_leaper_yaml(agents_dir, name, provider, model_name, api_key, base_url, "telegram", bot_token)
+    _write_dotenv(agents_dir, provider, api_key, "telegram", bot_token)
+
+    # Add proxy to .env if set
+    if proxy:
+        with open(agents_dir / ".env", "a", encoding="utf-8") as f:
+            f.write(f"\nHTTPS_PROXY={proxy}\nHTTP_PROXY={proxy}\nALL_PROXY={proxy}\n")
+
+    _cprint(f"\n[green]✅ Agent [{name}] 创建成功！[/green]")
+    _cprint(f"   目录：{agents_dir}")
+    _cprint(f"\n[bold]启动：[/bold]")
+    _cprint(f"  [cyan]leaper run --workspace {agents_dir}[/cyan]\n")
+
+
+# ── leaper list ───────────────────────────────────────────────────────────────
+
+def cmd_list() -> None:
+    """列出所有已创建的 agent"""
+    _banner()
+    agents_dir = Path.home() / ".leaper" / "agents"
+    if not agents_dir.exists():
+        _cprint("[yellow]尚未创建任何 agent。运行 leaper create 创建。[/yellow]")
+        return
+
+    _cprint("[bold]已创建的 Agent：[/bold]\n")
+    for d in sorted(agents_dir.iterdir()):
+        if d.is_dir() and (d / "leaper.yaml").exists():
+            try:
+                import yaml
+                cfg = yaml.safe_load((d / "leaper.yaml").read_text(encoding="utf-8"))
+                name = cfg.get("name", d.name)
+                _cprint(f"  📦 [bold]{name}[/bold] ({d.name})")
+                _cprint(f"     [dim]{d}[/dim]")
+            except Exception:
+                _cprint(f"  📦 {d.name}")
+
+
 def main() -> None:
     try:
         import fire
@@ -766,6 +958,9 @@ def main() -> None:
                 "init": cmd_init,
                 "run": cmd_run,
                 "chat": cmd_chat,
+                "config": cmd_config,
+                "create": cmd_create,
+                "list": cmd_list,
                 "workshop": cmd_workshop,
                 "status": cmd_status,
             }
