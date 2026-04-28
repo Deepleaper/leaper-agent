@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "leaper-agent"
-version = "0.9.1"
+version = "0.9.2"
 description = "自进化 AI 员工框架 — 越用越聪明"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -113,6 +113,7 @@ py-modules = [
 
 [tool.setuptools.package-data]
 hermes_cli = ["web_dist/**/*"]
+templates = ["**/*.md", "**/*.yaml", "**/.leaper-seeded"]
 "*" = ["templates/**/*"]
 
 [tool.setuptools.packages.find]
@@ -125,6 +126,7 @@ include = [
   "cron",
   "acp_adapter",
   "plugins", "plugins.*",
+  "templates", "templates.*",
 ]
 
 [tool.pytest.ini_options]

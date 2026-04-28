@@ -84,7 +84,7 @@ def _load_local_templates() -> list[dict[str, Any]]:
         return []
     results: list[dict[str, Any]] = []
     for item in sorted(_TEMPLATES_DIR.iterdir()):
-        if not item.is_dir():
+        if not item.is_dir() or item.name.startswith(("__", ".")):
             continue
         meta_file = item / "template.yaml"
         if meta_file.exists():
@@ -118,7 +118,7 @@ def _fetch_remote_index() -> list[dict[str, Any]]:
 def _copy_local_template(src: Path, target: Path) -> list[str]:
     written: list[str] = []
     for item in sorted(src.iterdir()):
-        if item.name == "template.yaml":
+        if item.name in ("template.yaml", "__pycache__", "__init__.py") or item.name.startswith("."):
             continue
         dest = target / item.name
         if not dest.exists():
