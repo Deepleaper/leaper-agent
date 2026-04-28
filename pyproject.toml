@@ -113,7 +113,7 @@ py-modules = [
 
 [tool.setuptools.package-data]
 hermes_cli = ["web_dist/**/*"]
-"" = ["templates/**/*"]
+"*" = ["templates/**/*"]
 
 [tool.setuptools.packages.find]
 include = [
