@@ -365,13 +365,33 @@ Failover: automatic fallback when primary model is unavailable.
 
 ---
 
+## Prerequisites
+
+Before installing, make sure you have:
+
+| Tool | Version | Download | Notes |
+|------|---------|----------|-------|
+| **Python** | ≥ 3.10 | [python.org/downloads](https://www.python.org/downloads/) | ⚠️ Windows: check **"Add python.exe to PATH"** during install |
+| **Git** | any | [git-scm.com/download](https://git-scm.com/download/) | Windows: default options, Next all the way |
+| **Ollama** (optional) | any | [ollama.com/download](https://ollama.com/download) | For local models. Not required if using cloud API |
+
+> 💡 After installing Python and Git on Windows, **close and reopen PowerShell** for PATH changes to take effect.
+
+Verify:
+```bash
+python --version   # Should show 3.10+
+git --version      # Should show any version
+```
+
+---
+
 ## Quick Install
 
 ```bash
 pip install leaper-agent
 ```
 
-**Requirements**: Python ≥ 3.10. No C++ compiler. No GPU.
+**No C++ compiler needed. No GPU required.**
 
 ```bash
 leaper init                          # Interactive wizard
