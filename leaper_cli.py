@@ -766,11 +766,13 @@ def cmd_config(
     base_url: str = "",
     model: str = "",
     proxy: str = "",
+    github_token: str = "",
     show: bool = False,
 ) -> None:
     """全局配置（API Key、模型、代理），所有 agent 共享。
 
     leaper config --api-key sk-xxx --base-url http://... --proxy http://127.0.0.1:10809
+    leaper config --github-token ghp_xxx  （用于拉取私有模板）
     leaper config --show  查看当前配置
     """
     _banner()
@@ -798,13 +800,14 @@ def cmd_config(
                 _cprint(f"  {k}: {display_v}")
         return
 
-    if not any([api_key, base_url, model, proxy]):
+    if not any([api_key, base_url, model, proxy, github_token]):
         # Interactive mode
         _cprint("[bold]全局配置（所有 agent 共享）[/bold]\n")
         api_key = _ask("API Key", default=existing.get("api_key", ""), password=True)
         base_url = _ask("Base URL", default=existing.get("base_url", ""))
         model = _ask("默认模型", default=existing.get("model", ""))
         proxy = _ask("代理地址（如 http://127.0.0.1:10809，不需要留空）", default=existing.get("proxy", ""))
+        github_token = _ask("GitHub Token（用于拉私有模板，不需要留空）", default=existing.get("github_token", ""), password=True)
 
     if api_key:
         existing["api_key"] = api_key
@@ -814,6 +817,8 @@ def cmd_config(
         existing["model"] = model
     if proxy:
         existing["proxy"] = proxy
+    if github_token:
+        existing["github_token"] = github_token
 
     try:
         import yaml

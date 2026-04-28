@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import shutil
 import urllib.request
 from pathlib import Path
@@ -21,9 +22,36 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-REMOTE_URL = "https://raw.githubusercontent.com/Deepleaper/leaper-templates/main/index.json"
+REMOTE_URL = "https://raw.githubusercontent.com/Deepleaper/leaper-templates/master/index.json"
 _TEMPLATES_DIR = Path(__file__).parent / "templates"
 _FETCH_TIMEOUT = 8
+_GITHUB_API_BASE = "https://api.github.com/repos/Deepleaper/leaper-templates/contents"
+
+
+def _get_github_token() -> str:
+    """Read GitHub token from global config or env."""
+    # Env var first
+    token = os.environ.get("LEAPER_GITHUB_TOKEN", "")
+    if token:
+        return token
+    # Global config
+    global_path = Path.home() / ".leaper" / "global.yaml"
+    if global_path.exists():
+        try:
+            import yaml
+            cfg = yaml.safe_load(global_path.read_text(encoding="utf-8")) or {}
+            return cfg.get("github_token", "")
+        except Exception:
+            pass
+    return ""
+
+
+def _github_headers() -> dict[str, str]:
+    headers = {"User-Agent": "leaper-agent/0.9.4", "Accept": "application/vnd.github.v3.raw"}
+    token = _get_github_token()
+    if token:
+        headers["Authorization"] = f"token {token}"
+    return headers
 
 
 def list_templates() -> list[dict[str, Any]]:
@@ -106,10 +134,8 @@ def _load_local_templates() -> list[dict[str, Any]]:
 
 
 def _fetch_remote_index() -> list[dict[str, Any]]:
-    req = urllib.request.Request(
-        REMOTE_URL,
-        headers={"User-Agent": "leaper-agent/0.7.0"},
-    )
+    url = f"{_GITHUB_API_BASE}/index.json?ref=master"
+    req = urllib.request.Request(url, headers=_github_headers())
     with urllib.request.urlopen(req, timeout=_FETCH_TIMEOUT) as resp:
         data: dict = json.loads(resp.read())
     return data.get("templates", [])
@@ -129,10 +155,9 @@ def _copy_local_template(src: Path, target: Path) -> list[str]:
 
 
 def _download_remote_template(name: str, target: Path) -> list[str]:
-    base = f"https://raw.githubusercontent.com/Deepleaper/leaper-templates/main/{name}"
-
-    yaml_url = f"{base}/template.yaml"
-    req = urllib.request.Request(yaml_url, headers={"User-Agent": "leaper-agent/0.7.0"})
+    # Fetch template.yaml via GitHub API (supports private repos)
+    yaml_url = f"{_GITHUB_API_BASE}/templates/{name}/template.yaml?ref=master"
+    req = urllib.request.Request(yaml_url, headers=_github_headers())
     with urllib.request.urlopen(req, timeout=_FETCH_TIMEOUT) as resp:
         import yaml
         meta: dict = yaml.safe_load(resp.read()) or {}
@@ -146,8 +171,8 @@ def _download_remote_template(name: str, target: Path) -> list[str]:
         dest = target / fname
         if dest.exists():
             continue
-        file_url = f"{base}/{fname}"
-        req2 = urllib.request.Request(file_url, headers={"User-Agent": "leaper-agent/0.7.0"})
+        file_url = f"{_GITHUB_API_BASE}/templates/{name}/{fname}?ref=master"
+        req2 = urllib.request.Request(file_url, headers=_github_headers())
         with urllib.request.urlopen(req2, timeout=_FETCH_TIMEOUT) as resp2:
             dest.write_bytes(resp2.read())
         written.append(fname)
