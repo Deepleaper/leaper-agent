@@ -28,11 +28,16 @@ except ImportError:
 
 def _cprint(msg: str) -> None:
     """Print with rich markup, or strip tags and plain-print as fallback."""
-    if _RICH:
-        _RichConsole().print(msg)
-    else:
+    try:
+        if _RICH:
+            _RichConsole().print(msg)
+        else:
+            import re
+            print(re.sub(r"\[/?[^\]]*\]", "", msg))
+    except UnicodeEncodeError:
         import re
-        print(re.sub(r"\[/?[^\]]*\]", "", msg))
+        clean = re.sub(r"\[/?[^\]]*\]", "", msg)
+        print(clean.encode("ascii", errors="replace").decode("ascii"))
 
 
 def _ask(question: str, default: str = "", password: bool = False) -> str:
@@ -77,8 +82,8 @@ def _print_menu(options: list[str]) -> int:
 
 def _banner() -> None:
     _cprint(
-        "\n[bold cyan]⚡ Leaper Agent[/bold cyan] [dim]v0.9.0[/dim]  "
-        "[dim]自进化 AI 员工框架[/dim]\n"
+        "\n[bold cyan]Leaper Agent[/bold cyan] [dim]v0.9.0[/dim]  "
+        "[dim]Self-Evolving AI Agent Framework[/dim]\n"
     )
 
 
