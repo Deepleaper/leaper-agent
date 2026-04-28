@@ -227,9 +227,64 @@ def cmd_init(workspace: str = ".", template: str = "", name: str = "") -> None:
     _cprint("\n[green]✅ 配置完成！文件已生成：[/green]")
     _cprint(f"   [dim]{workspace_path / 'leaper.yaml'}[/dim]")
     _cprint(f"   [dim]{workspace_path / '.env'}[/dim]")
+
+    # ── 复制模板 .md 文件到 ~/.leaper/ ─────────────────────────────────────
+    _deploy_workspace_files(workspace_path, name, template)
+
     _cprint("\n[bold]下一步：[/bold]")
     _cprint("  [cyan]leaper run[/cyan]    # 启动 agent")
     _cprint("  [cyan]leaper chat[/cyan]   # 先在终端里试试\n")
+
+
+def _deploy_workspace_files(workspace: Path, name: str, template: str) -> None:
+    """Copy template .md files (or generate defaults) into ~/.leaper/ for the base engine to read."""
+    import shutil
+    leaper_home = Path.home() / ".leaper"
+    leaper_home.mkdir(parents=True, exist_ok=True)
+
+    # Remove stale seed marker so seed loader re-reads files
+    marker = leaper_home / ".leaper-seeded"
+    if marker.exists():
+        marker.unlink()
+
+    # Try to find template files
+    template_dir = None
+    if template:
+        candidate = workspace / "templates" / template
+        if not candidate.exists():
+            # Also check relative to the leaper-python install
+            candidate = Path(__file__).parent / "templates" / template
+        if candidate.exists():
+            template_dir = candidate
+
+    md_files = ["EGO.md", "SOUL.md", "IDENTITY.md", "USER.md", "MEMORY.md"]
+
+    if template_dir:
+        copied = []
+        for f in md_files:
+            src = template_dir / f
+            if src.exists():
+                shutil.copy2(src, leaper_home / f)
+                copied.append(f)
+        if copied:
+            _cprint(f"   [dim]人格文件已部署到 {leaper_home}: {', '.join(copied)}[/dim]")
+    else:
+        # Generate minimal defaults
+        defaults = {
+            "SOUL.md": f"# {name}\n\n我是 {name}，一个由 Leaper Agent 驱动的 AI 助手。\n",
+            "IDENTITY.md": f"# IDENTITY\n\n- **Name**: {name}\n- **Powered by**: Leaper Agent\n",
+        }
+        for fname, content in defaults.items():
+            target = leaper_home / fname
+            if not target.exists():
+                target.write_text(content, encoding="utf-8")
+        _cprint(f"   [dim]默认人格文件已生成到 {leaper_home}[/dim]")
+
+    # Also copy .env to ~/.leaper/ for the gateway to read
+    env_src = workspace / ".env"
+    env_dst = leaper_home / ".env"
+    if env_src.exists():
+        shutil.copy2(env_src, env_dst)
 
 
 def _write_leaper_yaml(
@@ -285,8 +340,15 @@ def _write_dotenv(
             lines.append(f"TELEGRAM_BOT_TOKEN={channel_token}")
         elif channel_type == "discord":
             lines.append(f"DISCORD_BOT_TOKEN={channel_token}")
-    if lines:
-        (workspace / ".env").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    # ── 默认产品配置（隐藏技术细节、关闭引用回复）──
+    lines.append("")
+    lines.append("# Leaper defaults — do not expose internals to users")
+    lines.append("TELEGRAM_REPLY_TO_MODE=off")
+    lines.append("HERMES_SHOW_TOOL_CALLS=false")
+    lines.append("GATEWAY_ALLOW_ALL_USERS=true")
+
+    (workspace / ".env").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 # ── leaper run ────────────────────────────────────────────────────────────────
