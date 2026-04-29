@@ -1,4 +1,4 @@
-"""Leaper CLI — v0.9.3 产品级安装体验
+"""Leaper CLI — v1.0.1 产品级安装体验
 
 Commands:
   leaper init [--template NAME]  交互式向导，生成 leaper.yaml + .env
@@ -82,7 +82,7 @@ def _print_menu(options: list[str]) -> int:
 
 def _banner() -> None:
     _cprint(
-        "\n[bold cyan]Leaper Agent[/bold cyan] [dim]v0.9.3[/dim]  "
+        "\n[bold cyan]Leaper Agent[/bold cyan] [dim]v1.0.1[/dim]  "
         "[dim]Self-Evolving AI Agent Framework[/dim]\n"
     )
 
@@ -394,13 +394,52 @@ def cmd_run(workspace: str = ".") -> None:
     """读 leaper.yaml → 转换为 Hermes 格式 → 启动 gateway"""
     _banner()
 
+    _bootstrap_env(workspace)
+    leaper_home = Path(os.environ.get("LEAPER_HOME", str(Path.home() / ".leaper")))
+    leaper_home.mkdir(parents=True, exist_ok=True)
+
+    # ── Multi-agent fast path ──────────────────────────────────────────────
+    # If config.yaml already has an 'agents' list, skip single-agent leaper.yaml
+    # conversion and launch gateway directly with the multi-agent config.
+    _config_yaml = leaper_home / "config.yaml"
+    _is_multi_agent = False
+    if _config_yaml.exists():
+        try:
+            import yaml as _yaml
+            _raw = _yaml.safe_load(_config_yaml.read_text(encoding="utf-8")) or {}
+            if isinstance(_raw.get("agents"), list) and _raw["agents"]:
+                _is_multi_agent = True
+        except Exception:
+            pass
+
+    if _is_multi_agent:
+        _agent_count = len(_raw["agents"])
+        _agent_names = ", ".join(a.get("id", "?") for a in _raw["agents"][:5])
+        if _agent_count > 5:
+            _agent_names += f" +{_agent_count - 5} more"
+        _cprint(f"[bold green]🚀 多 Agent 模式 — {_agent_count} 个 Agent 已上线！[/bold green]")
+        _cprint(f"[dim]Agents: {_agent_names}[/dim]")
+        _cprint("[dim]📱 打开 Telegram，给各 Bot 发消息试试[/dim]")
+        _cprint("\n[dim]按 Ctrl+C 停止[/dim]\n")
+        try:
+            import asyncio
+            from gateway.run import start_gateway
+            asyncio.run(start_gateway())
+        except KeyboardInterrupt:
+            _cprint("\n[dim]Gateway 已停止。再见！[/dim]\n")
+        except Exception as exc:
+            import traceback
+            traceback.print_exc()
+            _handle_gateway_error(exc, "telegram")
+            sys.exit(1)
+        return
+
+    # ── Single-agent path (legacy leaper.yaml) ─────────────────────────────
     yaml_path = _find_leaper_yaml(workspace)
     if yaml_path is None:
-        _cprint("[red]❌ 未找到 leaper.yaml[/red]")
-        _cprint("\n请先运行：[cyan]leaper init[/cyan]")
+        _cprint("[red]❌ 未找到 leaper.yaml 或多 Agent config.yaml[/red]")
+        _cprint("\n请先运行：[cyan]leaper init[/cyan] 或 [cyan]leaper init-team[/cyan]")
         sys.exit(1)
-
-    _bootstrap_env(workspace)
 
     try:
         from leaper_config import load_leaper_config, config_to_hermes_env, write_hermes_config
@@ -916,7 +955,14 @@ def cmd_create(template: str = "", bot_token: str = "", name: str = "") -> None:
         except Exception:
             pass
 
-    if not global_cfg.get("api_key"):
+    # Check for API key in global config (top-level or nested in providers)
+    has_key = bool(global_cfg.get("api_key"))
+    if not has_key:
+        for _prov in (global_cfg.get("providers") or {}).values():
+            if isinstance(_prov, dict) and _prov.get("api_key"):
+                has_key = True
+                break
+    if not has_key:
         _cprint("[red]❌ 请先运行 leaper config 配置全局 API Key[/red]")
         sys.exit(1)
 
@@ -977,11 +1023,21 @@ def cmd_create(template: str = "", bot_token: str = "", name: str = "") -> None:
         if copied:
             _cprint(f"[dim]模板文件：{', '.join(copied)}[/dim]")
 
-    # Generate leaper.yaml
-    provider = "custom" if global_cfg.get("base_url") else "openai"
-    model_name = global_cfg.get("model", "gpt-4o")
-    api_key = global_cfg.get("api_key", "")
-    base_url = global_cfg.get("base_url", "")
+    # Generate leaper.yaml — resolve from global config (flat or nested providers)
+    _default_prov_name = global_cfg.get("default_provider", "")
+    _providers = global_cfg.get("providers") or {}
+    _prov_cfg = _providers.get(_default_prov_name, {}) if _default_prov_name else {}
+    if not _prov_cfg:
+        # Fallback: use first provider with an api_key
+        for _pv in _providers.values():
+            if isinstance(_pv, dict) and _pv.get("api_key"):
+                _prov_cfg = _pv
+                break
+
+    api_key = global_cfg.get("api_key") or _prov_cfg.get("api_key", "")
+    base_url = global_cfg.get("base_url") or _prov_cfg.get("base_url", "")
+    model_name = global_cfg.get("default_model") or global_cfg.get("model") or _prov_cfg.get("model", "gpt-4o")
+    provider = "custom" if base_url else "openai"
     proxy = global_cfg.get("proxy", "")
 
     _write_leaper_yaml(agents_dir, name, provider, model_name, api_key, base_url, "telegram", bot_token)
@@ -1173,3 +1229,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

@@ -1,0 +1,24 @@
+name: cmo
+displayName: '📣 AI CMO — 市场增长顾问'
+version: 1.0.0
+author: Deepleaper
+description: '定位、GTM、获客、竞品监控，含 CRO 销售支持'
+files: [EGO.md, SOUL.md, IDENTITY.md, USER.md, MEMORY.md, AGENTS.md, config.yaml, .env]
+industry:
+  default: "科技创业公司"
+  applicable: ["互联网", "SaaS", "AI", "电商", "企业服务", "消费品", "教育"]
+config:
+  suggestedModel: claude-sonnet-4-20250514
+  brainEnabled: true
+
+
+skills:
+  L2: ["cmo-growth"]
+  L3:
+    - cmo-positioning
+    - cmo-gtm
+    - cmo-sales-scripts
+    - cmo-proposal
+    - cmo-competitor
+    - cmo-content
+    - cmo-trend

@@ -1,0 +1,23 @@
+name: clo
+displayName: '⚖️ AI CLO — 法务战略顾问'
+version: 1.0.0
+author: Deepleaper
+description: '合同审核、合规监控、知识产权，CEO 的法务大脑'
+files: [EGO.md, SOUL.md, IDENTITY.md, USER.md, MEMORY.md, AGENTS.md, config.yaml, .env]
+industry:
+  default: "科技创业公司"
+  applicable: ["互联网", "SaaS", "AI", "电商", "企业服务", "金融科技", "生物医药"]
+config:
+  suggestedModel: claude-sonnet-4-20250514
+  brainEnabled: true
+
+
+skills:
+  L2: ["clo-legal"]
+  L3:
+    - clo-contract-review
+    - clo-compliance
+    - clo-ip-strategy
+    - clo-policy-watch
+    - clo-equity
+    - clo-legal-kb

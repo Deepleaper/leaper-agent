@@ -1,0 +1,23 @@
+name: coo
+displayName: '⚙️ AI COO — 运营执行顾问'
+version: 1.0.0
+author: Deepleaper
+description: 'OKR追踪、会议管理、流程优化，CEO 的执行引擎'
+files: [EGO.md, SOUL.md, IDENTITY.md, USER.md, MEMORY.md, AGENTS.md, config.yaml, .env]
+industry:
+  default: "科技创业公司"
+  applicable: ["互联网", "SaaS", "AI", "电商", "企业服务", "制造业", "服务业"]
+config:
+  suggestedModel: claude-sonnet-4-20250514
+  brainEnabled: true
+
+
+skills:
+  L2: ["coo-operations"]
+  L3:
+    - coo-meeting
+    - coo-okr
+    - coo-action-tracker
+    - coo-process
+    - coo-sop
+    - coo-resource

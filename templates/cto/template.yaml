@@ -1,0 +1,25 @@
+name: cto
+displayName: '💻 AI CTO — 技术战略顾问'
+version: 1.0.0
+author: Deepleaper
+description: '技术选型、架构设计、技术趋势，CEO 的技术大脑'
+files: [EGO.md, SOUL.md, IDENTITY.md, USER.md, MEMORY.md, AGENTS.md, config.yaml, .env]
+industry:
+  default: "科技创业公司"
+  applicable: ["互联网", "SaaS", "AI", "电商", "企业服务", "硬件", "IoT", "金融科技"]
+config:
+  suggestedModel: claude-sonnet-4-20250514
+  brainEnabled: true
+
+
+skills:
+  L2: ["cto-architecture"]
+  L3:
+    - cto-tech-radar
+    - cto-architecture
+    - cto-competitor
+    - cto-tech-selection
+    - cto-tech-doc
+    - cto-interview
+    - cto-security
+    - cto-tech-debt

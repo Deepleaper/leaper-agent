@@ -2576,7 +2576,7 @@ class GatewayRunner:
                     event: "MessageEvent",
                     _aid: str = _agent_id,
                 ) -> None:
-                    await self._handle_message(event, _agent_id=_aid)
+                    return await self._handle_message(event, _agent_id=_aid)
 
                 adapter.set_message_handler(_agent_handler)
                 adapter.set_fatal_error_handler(self._handle_adapter_fatal_error)
@@ -9388,7 +9388,7 @@ class GatewayRunner:
             "tools": [],
             "history_offset": len(history),
             "session_id": session_id,
-            "response_previewed": _stream_consumer is not None and bool(full_response),
+            "response_previewed": _stream_consumer is not None and bool(full_response) and getattr(_stream_consumer, "final_response_sent", False),
         }
 
     # ------------------------------------------------------------------

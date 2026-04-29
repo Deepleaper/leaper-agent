@@ -1,0 +1,24 @@
+name: cpo
+displayName: '🎯 AI CPO — 产品战略顾问'
+version: 1.0.0
+author: Deepleaper
+description: '需求梳理、PRD、路线图，把模糊想法变成可执行方案'
+files: [EGO.md, SOUL.md, IDENTITY.md, USER.md, MEMORY.md, AGENTS.md, config.yaml, .env]
+industry:
+  default: "科技创业公司"
+  applicable: ["互联网", "SaaS", "AI", "电商", "企业服务", "工具产品", "平台"]
+config:
+  suggestedModel: claude-sonnet-4-20250514
+  brainEnabled: true
+
+
+skills:
+  L2: ["cpo-product-thinking"]
+  L3:
+    - cpo-prd
+    - cpo-user-stories
+    - cpo-requirement
+    - cpo-roadmap
+    - cpo-competitor
+    - cpo-metrics
+    - cpo-user-voice
