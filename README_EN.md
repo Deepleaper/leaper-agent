@@ -190,23 +190,36 @@ Each template includes: SOUL.md (personality), EGO.md (behavioral rules), config
 
 ---
 
-## Industry Adaptations (Pro)
+## Three-Layer Skill Architecture
 
-Generic templates work out of the box. Industry-specific versions provide deeper domain knowledge and workflows:
-
-`ecom` · `adtech` · `invest` · `edu` · `health` · `b2b` · `finance` · `consumer` · `auto` · `mfg` · `realestate` · `energy` · `logistics` · `travel` · `agri` · `construction` · `legal` · `hr` · `fitness` · `media`
-
-**20 industries × 7 roles = 140 industry templates.** Available through Leaper Pro subscription.
-
-### Three-Layer Skill Architecture
+Templates aren't hardcoded logic — they're **configurable Markdown + YAML file sets**. Three layers, auto-stacking:
 
 ```
-L1 Industry Skills (21)    ← Domain knowledge (e.g., ecommerce GMV analysis)   [Pro]
-L2 Role Skills (10)        ← Role capabilities (e.g., CFO financial modeling)   [Open Source]
-L3 Workstation Skills (72) ← Concrete scenarios (e.g., CFO cash flow forecast) [Open Source]
+L1 Industry Skills  ← Domain-specific knowledge (e.g., ecommerce GMV frameworks, SaaS ARR metrics)
+L2 Role Skills      ← Role-level capabilities (e.g., CFO financial modeling methodology)
+L3 Workstation Skills ← Concrete work scenarios (e.g., CFO cash flow forecast, fundraising prep)
 ```
 
-Automatic matching: CFO + ecommerce → loads `L1-ecom` + `L2-cfo-financial-modeling` + `L3-cfo-cashflow/budget/cost/...`
+Auto-stacking: CFO + ecommerce → loads `L1-ecom` + `L2-cfo-financial-modeling` + `L3-cfo-cashflow/budget/cost/...`
+
+Each skill is a Markdown file describing methods, checklists, and output templates for that scenario. Write your own or use the built-in ones.
+
+**Configuration** (`template.yaml`):
+```yaml
+name: cfo
+industry:
+  default: "general"
+  applicable: ["ecom", "saas", "ai"]
+skills:
+  L2: ["cfo-financial-modeling"]
+  L3:
+    - cfo-cashflow
+    - cfo-budget
+    - cfo-cost
+    - cfo-fundraising
+```
+
+Supports 20 industry adaptations: `ecom` · `adtech` · `invest` · `edu` · `health` · `b2b` · `finance` · `consumer` · `auto` · `mfg` · `realestate` · `energy` · `logistics` · `travel` · `agri` · `construction` · `legal` · `hr` · `fitness` · `media`
 
 ---
 

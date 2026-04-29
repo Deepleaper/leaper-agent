@@ -238,23 +238,36 @@ leaper init --template cfo
 
 ---
 
-## 行业适配（Pro）
+## 三层技能架构
 
-通用模板开箱即用。行业专属版提供更精准的领域知识和工作流：
-
-`ecom` · `adtech` · `invest` · `edu` · `health` · `b2b` · `finance` · `consumer` · `auto` · `mfg` · `realestate` · `energy` · `logistics` · `travel` · `agri` · `construction` · `legal` · `hr` · `fitness` · `media`
-
-**20 个行业 × 7 个角色 = 140 个行业模板。** 通过 Leaper Pro 订阅获取。
-
-### 三层技能架构
+模板不是硬编码逻辑，是**可配置的 Markdown + YAML 文件组合**。三层继承，自动叠加：
 
 ```
-L1 行业技能（21 个）  ← 行业专属知识（如电商的 GMV 分析框架）    [Pro]
-L2 角色技能（10 个）  ← 角色通用能力（如 CFO 的财务建模方法论）  [开源]
-L3 工位技能（72 个）  ← 具体工作场景（如 CFO 的现金流预测）      [开源]
+L1 行业技能  ← 行业专属知识（如电商的 GMV 分析框架、SaaS 的 ARR 指标体系）
+L2 角色技能  ← 角色通用能力（如 CFO 的财务建模方法论）
+L3 工位技能  ← 具体工作场景（如 CFO 的现金流预测、融资路演准备）
 ```
 
-系统自动匹配：选了 CFO + 电商行业 → 加载 `L1-ecom` + `L2-cfo-financial-modeling` + `L3-cfo-cashflow/budget/cost/...`
+系统自动叠加：选了 CFO + 电商行业 → 加载 `L1-ecom` + `L2-cfo-financial-modeling` + `L3-cfo-cashflow/budget/cost/...`
+
+每个技能就是一个 Markdown 文件，描述该场景下的工作方法、检查清单、输出模板。你可以自己写，也可以用内置的。
+
+**配置方式**（`template.yaml`）：
+```yaml
+name: cfo
+industry:
+  default: "通用"
+  applicable: ["电商", "SaaS", "AI"]
+skills:
+  L2: ["cfo-financial-modeling"]
+  L3:
+    - cfo-cashflow
+    - cfo-budget
+    - cfo-cost
+    - cfo-fundraising
+```
+
+支持 20 个行业适配：`ecom` · `adtech` · `invest` · `edu` · `health` · `b2b` · `finance` · `consumer` · `auto` · `mfg` · `realestate` · `energy` · `logistics` · `travel` · `agri` · `construction` · `legal` · `hr` · `fitness` · `media`
 
 ---
 
