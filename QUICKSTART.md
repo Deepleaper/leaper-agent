@@ -15,12 +15,10 @@
 ## 第一步：安装
 
 ```bash
-git clone https://github.com/Deepleaper/leaper-agent.git
-cd leaper-agent
-pip install -e ".[messaging]"
+pip install leaper-agent
 ```
 
-> 💡 如果只用终端对话不需要 Telegram，可以 `pip install -e .`
+> 💡 无需 Git，无需编译，纯 Python 包。Windows / macOS / Linux 均可。
 
 验证安装：
 

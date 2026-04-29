@@ -428,18 +428,74 @@ brain:
 ```bash
 leaper workshop                      # List templates
 leaper init --template ceo-coach     # Install template
+leaper init-team                     # Multi-agent setup (one token per role)
 ```
 
 Templates are pre-configured file sets (YAML + Markdown), not hardcoded logic. Fork any template and modify freely.
 
-### CEO Coach
+### 10 CXO Role Templates
 
-Socratic startup coach designed for CEOs and founders:
+| # | Role | Template ID | Description | Skills |
+|---|------|-------------|-------------|--------|
+| 1 | 🎯 CEO Coach | `ceo-coach` | Socratic coaching + 40 business frameworks | 10 |
+| 2 | 💻 CTO | `cto` | Tech strategy, architecture, security audit | 9 |
+| 3 | 💰 CFO | `cfo` | Cash flow, fundraising, budget, tax planning | 9 |
+| 4 | 📣 CMO | `cmo` | Positioning, GTM, acquisition, competitor monitoring | 8 |
+| 5 | ⚙️ COO | `coo` | OKR tracking, meeting management, SOP | 7 |
+| 6 | 🎯 CPO | `cpo` | PRD writing, roadmap, user stories, metrics | 8 |
+| 7 | 👥 CHRO | `chro` | JD writing, interview design, org structure | 8 |
+| 8 | ⚖️ CLO | `clo` | Contract review, compliance, IP strategy | 7 |
+| 9 | 🧭 CSO | `cso` | Industry analysis, scenario planning, business model | 9 |
+| 10 | 📢 CCO | `cco` | Brand comms, founder IP, crisis PR, sentiment | 7 |
 
-- **Coaching philosophy**: Ask before answering, never decide for the user
-- **40 business frameworks**: Porter's Five Forces, SWOT, Flywheel, TAM/SAM/SOM, Jobs-to-be-Done...
-- **Six-layer memory**: Remembers your strategic preferences, past decisions, recurring concerns
-- **Strict behavioral boundaries**: No internal tool exposure, no technical details leaked, no error messages shown to users
+**82 specialized skills** across all roles. Each role includes SOUL.md (personality), EGO.md (behavior rules), config.yaml, and L2/L3 skill sets.
+
+### 20 Industry Adaptations
+
+Industry-specific templates auto-adapt when available: `ecom`, `adtech`, `invest`, `edu`, `health`, `b2b`, `finance`, `consumer`, `auto`, `mfg`, `realestate`, `energy`, `logistics`, `travel`, `agri`, `construction`, `legal`, `hr`, `fitness`, `media`.
+
+**150 template directories, 709 configuration files.**
+
+### Three-Layer Skill Architecture
+
+```
+L1 Industry Skills (21)   ← Industry-specific knowledge
+L2 Role Skills (10)       ← Role-level capabilities
+L3 Workstation Skills (72) ← Concrete work scenarios
+```
+
+---
+
+## Multi-Agent Architecture
+
+Run multiple AI roles from a single process:
+
+```bash
+leaper init-team    # Interactive wizard: add roles + tokens
+leaper run          # Starts all agents in one process (~1GB RAM)
+```
+
+Each agent gets:
+- **Isolated workspace** (`~/.leaper/agents/{role}/`)
+- **Isolated brain.db** (memories don't cross-contaminate)
+- **Independent Telegram bot** (one token per role)
+- **Shared model config** (all roles use the same LLM provider)
+
+Config example (`~/.leaper/config.yaml`):
+```yaml
+model: claude-sonnet-4-20250514
+agents:
+  - id: cfo
+    workspace: ~/.leaper/agents/cfo
+    platforms:
+      telegram:
+        token: '111:AAA...'
+  - id: cto
+    workspace: ~/.leaper/agents/cto
+    platforms:
+      telegram:
+        token: '222:BBB...'
+```
 
 ---
 
