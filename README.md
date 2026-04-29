@@ -1,487 +1,279 @@
 # Leaper Agent
 
-**Self-Evolving AI Agent Framework** — An AI colleague that actually learns from experience.
+**会自己进化的 AI 员工框架** — 越用越聪明，不是口号，是工程实现。
 
-Most AI agents are stateless. Every conversation starts from zero. Leaper is different: it extracts structured experiences from every interaction, clusters them into reusable skills, builds a mental model of you, and validates its own knowledge for consistency. Six layers of evolution, running continuously.
-
-<table>
-<tr><td><b>Real Memory, Not a Notepad</b></td><td>Every conversation is analyzed along four dimensions (task/strategy/outcome/insight), filtered through 4-gate quality control, deduplicated at cosine > 0.85, and stored in a local SQLite database. BM25 + vector hybrid recall with RRF fusion — not "dump everything into context".</td></tr>
-<tr><td><b>Gets Smarter Over Time</b></td><td>L1 extracts experiences → L2 clusters into reusable skills → L3 merges/deprecates/promotes across skills → L4 builds a user mental model → L5 validates consistency + runs regression checks. Each layer has quality gates and measurable metrics.</td></tr>
-<tr><td><b>Local-First LLM Strategy</b></td><td>High-frequency operations (embedding, extraction, validation) run on local Ollama models. Only infrequent reasoning tasks (skill synthesis, user modeling) call cloud LLMs. Deterministic operations use rules, not LLM.</td></tr>
-<tr><td><b>Product-Grade Install</b></td><td><code>pip install leaper-agent && leaper init && leaper run</code> — interactive wizard, no manual config editing. Pure Python, zero native compilation dependencies.</td></tr>
-<tr><td><b>15+ Platforms Out of the Box</b></td><td>Telegram · Discord · Slack · WhatsApp · Signal · Feishu · DingTalk · Matrix · Email · Home Assistant · API · CLI — single gateway process connects all platforms.</td></tr>
-<tr><td><b>Zero-Config Search</b></td><td>DuckDuckGo fallback needs no API key. Add Firecrawl / Tavily keys for deep search.</td></tr>
-<tr><td><b>Template System</b></td><td><code>leaper init --template ceo-coach</code> creates a professional AI employee in one command. CEO Coach template: Socratic coaching + 40 business frameworks + six-layer memory.</td></tr>
-</table>
+大多数 AI Agent 是无状态的：每次对话从零开始，聊过的事情不记得，犯过的错再犯一遍。Leaper 不一样：它从每次对话中提取结构化经验，聚类成可复用技能，构建你的心理模型，还会自我验证知识的一致性。六层进化，持续运行。
 
 ---
 
-## DeepBrain: Six-Layer Self-Evolution Engine
+## 一句话安装
 
-This is what makes Leaper fundamentally different from every other agent framework.
-
-### Why Not RAG?
-
-Existing agent "memory" falls into two patterns:
-
-1. **Full-context injection** — Write everything to MEMORY.md, stuff it all into the system prompt every turn. Problem: context window grows linearly, costs become uncontrollable after 50 conversations.
-2. **RAG vector retrieval** — Embed memories, retrieve Top-K each turn. Problem: pure vector search is poor at exact term matching ("MST state machine" won't match "Mission State Transition"), and cannot handle knowledge decay or conflicts.
-
-DeepBrain's approach: **BM25 exact matching + vector semantic search, RRF fusion ranking, six-layer evolution loop.** Not RAG — a cognitive evolution system.
-
-### Data Flow
-
+```bash
+pip install leaper-agent
+leaper init
+leaper run
 ```
-User message → Core engine processes → Agent replies
-                                          ↓
-                                    sync_turn() triggers
-                                          ↓
-                            ┌─────────────────────────────┐
-                            │  L1 Experience Extract       │
-                            │  4D analysis → 4Gate → store │
-                            └──────────────┬───────────────┘
-                                          ↓ (5+ entries accumulated)
-                            ┌─────────────────────────────┐
-                            │  L2 Skill Generate           │
-                            │  cluster → synthesize → test │
-                            └──────────────┬───────────────┘
-                                          ↓ (periodic)
-                            ┌─────────────────────────────┐
-                            │  L3 Cross-Skill Evolution    │
-                            │  MERGE / DEPRECATE / PROMOTE │
-                            └──────────────┬───────────────┘
-                                          ↓ (sufficient data)
-                            ┌─────────────────────────────┐
-                            │  L4 User Model               │
-                            │  Multi-dimensional profiling │
-                            └──────────────┬───────────────┘
-                                          ↓ (after every write)
-                            ┌─────────────────────────────┐
-                            │  L5 Adversarial Validation   │
-                            │  consistency + regression    │
-                            │  + decay                     │
-                            └─────────────────────────────┘
 
-Recall path (independent of evolution):
-User message → L0 Hybrid Recall → RRF fusion → Top-K injected into context
-```
+不需要 C++ 编译器。不需要 GPU。纯 Python，零原生依赖。
 
 ---
 
-### L0 — Hybrid Recall
+## 为什么选 Leaper？
 
-**Problem**: Pure vector search is bad at exact term matching. Pure keyword search can't understand that "evolution" and "gets smarter" mean the same thing.
+| 特性 | 说明 |
+|------|------|
+| **真正的记忆，不是记事本** | 每段对话从四个维度（任务/策略/结果/洞察）提取经验，经过 4 道质量门控，cosine > 0.85 去重，存入本地 SQLite。BM25 + 向量混合召回，RRF 融合排序 — 不是把所有东西塞进 context。 |
+| **越用越聪明** | L1 提取经验 → L2 聚类成技能 → L3 合并/废弃/晋升 → L4 构建用户画像 → L5 一致性验证 + 回归测试 + 记忆衰减。每层都有质量门控和可量化指标。 |
+| **本地优先的 LLM 策略** | 高频操作（embedding、提取、验证）跑本地 Ollama 模型。只有低频推理（技能合成、用户建模）才调云端。确定性操作用规则，不用 LLM。 |
+| **产品级安装体验** | 交互式向导，不需要手动编辑配置文件。Windows / macOS / Linux 都行。 |
+| **15+ 平台即插即用** | Telegram · Discord · Slack · WhatsApp · Signal · 飞书 · 钉钉 · Matrix · 邮件 · Home Assistant · API · 终端 — 一个进程连接所有平台。 |
+| **搜索零配置** | DuckDuckGo 兜底，不需要任何 API Key。加 Firecrawl / Tavily 可以深度搜索。 |
+| **模板系统** | `leaper init --template ceo-coach` 一条命令创建一个专业 AI 员工。10 个 CXO 角色 + 20 个行业适配。 |
 
-**Solution**: BM25 + vector search, RRF fusion.
+---
+
+## DeepBrain：六层自进化记忆引擎
+
+这是 Leaper 和所有其他 Agent 框架的根本区别。
+
+### 为什么不用 RAG？
+
+现有 Agent 的"记忆"无非两种模式：
+
+1. **全量注入** — 把所有东西写进 MEMORY.md，每轮全部塞进 system prompt。问题：context 线性增长，50 次对话后成本不可控。
+2. **RAG 向量检索** — 把记忆 embed 后每轮 Top-K 召回。问题：纯向量搜索对精确术语匹配很差（"MST 状态机"检索不到"Mission State Transition"），也处理不了知识衰减和冲突。
+
+DeepBrain 的方案：**BM25 精确匹配 + 向量语义搜索，RRF 融合排序，六层进化闭环。** 不是 RAG — 是认知进化系统。
+
+### 数据流
 
 ```
-RRF_score(d) = Σ 1 / (k + rank_i(d))    where k = 60
-```
+用户消息 → 核心引擎处理 → Agent 回复
+                                ↓
+                          sync_turn() 触发
+                                ↓
+                  ┌───────────────────────────┐
+                  │  L1 经验提取               │
+                  │  四维分析 → 4Gate → 存储   │
+                  └─────────────┬─────────────┘
+                                ↓（积累 5+ 条）
+                  ┌───────────────────────────┐
+                  │  L2 技能生成               │
+                  │  聚类 → 合成 → 回测       │
+                  └─────────────┬─────────────┘
+                                ↓（周期性）
+                  ┌───────────────────────────┐
+                  │  L3 跨技能进化             │
+                  │  MERGE / DEPRECATE / PROMOTE│
+                  └─────────────┬─────────────┘
+                                ↓（数据充足时）
+                  ┌───────────────────────────┐
+                  │  L4 用户建模               │
+                  │  多维画像构建              │
+                  └─────────────┬─────────────┘
+                                ↓（每次写入后）
+                  ┌───────────────────────────┐
+                  │  L5 对抗验证               │
+                  │  一致性 + 回归 + 衰减      │
+                  └───────────────────────────┘
 
-Two rankers:
-1. **BM25**: SQLite keyword search — exact matches for terms, abbreviations, codenames
-2. **768-dim vectors**: `nomic-embed-text` (274MB) local embedding — semantic understanding
-
-**Why RRF over weighted average?** RRF is scale-invariant. BM25 scores range 0–25, cosine scores range 0–1. Weighted averaging requires normalization with hard-to-tune parameters. RRF only looks at rank positions — automatically handles quality differences between rankers.
-
-**Graceful degradation**:
-- Ollama + nomic-embed-text available → full RRF
-- Ollama without embedding model → BM25 only
-- No Ollama → SQLite LIKE keyword search
-
-```python
-def hybrid_recall(self, query: str, top_k: int = 10) -> list[dict]:
-    bm25_results = self._bm25_search(query, top_k=50)
-    vector_results = self._vector_search(query, top_k=50)
-    return self._rrf_fuse(bm25_results, vector_results, top_k=top_k)
+召回路径（独立于进化）：
+用户消息 → L0 混合召回 → RRF 融合 → Top-K 注入 context
 ```
 
 ---
 
-### L1 — Experience Extract
+### L0 — 混合召回
 
-**Problem**: Most agents let the LLM freely decide what to remember. Result: the same thing stored 5 times, trivial info taking up 40%+ of memory, no quality filtering.
+**问题**：纯向量搜索对精确术语匹配差。纯关键词搜索理解不了"进化"和"越来越聪明"是同一个意思。
 
-**Solution**: Structured 4-dimensional extraction + 4-gate quality control.
+**方案**：BM25 + 向量搜索，RRF 融合。
 
-#### Four Dimensions
+```
+RRF_score(d) = Σ 1 / (k + rank_i(d))    k = 60
+```
 
-After each conversation turn, the LLM returns structured JSON:
+两路排序：
+1. **BM25**：SQLite 关键词搜索 — 精确匹配术语、缩写、代号
+2. **768 维向量**：`nomic-embed-text`（274MB）本地 embedding — 语义理解
+
+**为什么用 RRF 而不是加权平均？** RRF 与分数尺度无关。BM25 分数范围 0–25，cosine 范围 0–1。加权平均需要归一化，参数难调。RRF 只看排名位置 — 自动处理两路排序器的质量差异。
+
+**优雅降级**：
+- Ollama + nomic-embed-text 可用 → 完整 RRF
+- Ollama 没装 embedding 模型 → 纯 BM25
+- 没有 Ollama → SQLite LIKE 关键词搜索
+
+---
+
+### L1 — 经验提取
+
+**问题**：多数 Agent 让 LLM 自由决定记什么。结果：同一件事存 5 遍，琐碎信息占 40%+，没有质量过滤。
+
+**方案**：结构化四维提取 + 4Gate 质量门控。
+
+每轮对话后 LLM 返回结构化 JSON：
 
 ```json
 {
-  "task": "What the user asked for",
-  "strategy": "What approach was chosen",
-  "outcome": "What happened, success or failure",
-  "insight": "Reusable takeaway from this interaction"
+  "task": "用户要做什么",
+  "strategy": "选了什么方案",
+  "outcome": "结果如何，成功还是失败",
+  "insight": "可复用的经验总结"
 }
 ```
 
-Based on Kolb's Experiential Learning Cycle: concrete experience (task) → reflective observation (strategy) → abstract conceptualization (insight) → active experimentation (outcome).
+**4Gate 质量门控**：
+1. **任务成功门** — 失败的对话不提取（避免存垃圾）
+2. **复杂度门** — < 30 字符 = trivial，过滤掉"你好""谢谢""好的"
+3. **去重门** — cosine > 0.85 的已有记忆不重复存
+4. **完整度门** — 四个维度都必须有实质内容（≥ 10 字符）
 
-#### 4-Gate Quality Control
-
-```python
-def _should_store(self, experience: dict) -> bool:
-    # Gate 1: Task must succeed
-    if not experience.get("task_success"):
-        return False
-    
-    # Gate 2: Complexity filter
-    complexity = self._estimate_complexity(experience)
-    if complexity == "trivial":  # < 30 chars
-        return False  # "hello", "thanks", "ok" not worth storing
-    
-    # Gate 3: Deduplication
-    similar = self.brain.hybrid_recall(experience["task"], top_k=3)
-    if similar and similar[0]["score"] > 0.85:
-        return False
-    
-    # Gate 4: Completeness — all four dimensions must have substance
-    for field in ["task", "strategy", "outcome", "insight"]:
-        if not experience.get(field) or len(experience[field]) < 10:
-            return False
-    
-    return True
-```
-
-**Complexity detection**: Character count, not LLM judgment. In practice, LLMs classify almost everything as "moderate" in Chinese. `< 30 chars` = trivial, `30–200` = moderate, `≥ 200` = complex.
-
-**Measured**: ~27% of conversations filtered by 4Gate, 73% effective storage rate.
+**实测**：约 27% 对话被 4Gate 过滤，73% 有效存储率。
 
 ---
 
-### L2 — Skill Generate
+### L2 — 技能生成
 
-**Problem**: Experiences are one-off ("analyzed Dify competitor that time"). Skills are reusable ("how to do competitor analysis"). After 20 uses, the agent should have synthesized its own methodology.
+**问题**：经验是一次性的（"那次分析了 Dify 竞品"）。技能是可复用的（"怎么做竞品分析"）。用了 20 次后，Agent 应该自己总结出方法论。
 
-**Solution**: Cluster similar experiences → LLM synthesizes skill → backtesting validation.
+**方案**：聚类相似经验 → LLM 合成技能 → 回测验证。
 
-- **Clustering**: Greedy cosine-similarity clustering, threshold 0.7, minimum 5 experiences per cluster
-- **Synthesis**: LLM receives a cluster, outputs a skill definition with title, content, applicable scenarios, confidence score
-- **Quality gate**: `title` > 5 chars, `content` > 50 chars
-- **Backtesting**: Apply the new skill to historical questions, compare quality against original answers
-
-**Why 0.7 threshold?** 0.8 is too strict — variations in phrasing split the same topic into tiny clusters. 0.6 is too loose — unrelated experiences get grouped together. 0.7 is empirically tuned on CEO Coach conversations.
+- **聚类**：贪心 cosine 聚类，阈值 0.7，每簇至少 5 条经验
+- **合成**：LLM 收到一个聚类，输出技能定义（标题/内容/适用场景/置信度）
+- **回测**：把新技能应用到历史问题上，对比原始回答质量
 
 ---
 
-### L3 — Cross-Skill Evolution
+### L3 — 跨技能进化
 
-**Problem**: Skills accumulate redundancy ("competitor analysis v1" and "competitor analysis v2" say the same thing) and become stale.
+**问题**：技能越积越多，出现冗余（"竞品分析 v1"和"竞品分析 v2"说的是同一件事）和过时。
 
-| Operation | Trigger | Action |
-|-----------|---------|--------|
-| **MERGE** | Two skills cosine > 0.8 | Merge, keep higher-confidence structure |
-| **DEPRECATE** | access_count = 0 and confidence < 0.5 | Mark deprecated, lower recall weight |
-| **PROMOTE** | access_count > 10 and confidence > 0.8 | Mark core skill, boost recall weight |
+| 操作 | 触发条件 | 动作 |
+|------|----------|------|
+| **MERGE** | 两个技能 cosine > 0.8 | 合并，保留高置信度结构 |
+| **DEPRECATE** | access_count = 0 且 confidence < 0.5 | 标记废弃，降低召回权重 |
+| **PROMOTE** | access_count > 10 且 confidence > 0.8 | 标记核心技能，提升召回权重 |
 
-Plus **drift detection**: if a skill hasn't been used in 90+ days and new experiences contradict it, trigger review.
+加**漂移检测**：一个技能 90+ 天未使用且新经验与之矛盾 → 触发重审。
 
-**L3 uses zero LLM calls.** MERGE/DEPRECATE/PROMOTE are deterministic operations based on cosine similarity and access counts. This is core to the tiered design: **deterministic operations use rules; only fuzzy reasoning uses LLM.**
+**L3 零 LLM 调用。** MERGE/DEPRECATE/PROMOTE 全是确定性规则操作。这是分层设计的核心：**确定性操作用规则；只有模糊推理才用 LLM。**
 
 ---
 
-### L4 — User Model
+### L4 — 用户建模
 
-**Problem**: The agent doesn't know you. The same question should get completely different answers for a CEO vs. an engineer.
+**问题**：Agent 不了解你。同一个问题，给 CEO 和给工程师的回答应该完全不同。
 
-**Solution**: Automatically build a multi-dimensional user profile from conversations.
+**方案**：自动从对话中构建多维用户画像。
 
 ```json
 {
-  "communication_style": "Direct, data-driven, dislikes fluff",
-  "decision_patterns": "Data first, then judgment. Prefers MVP validation over perfect plans",
-  "recurring_topics": ["AI trends", "competitor analysis", "product architecture"],
+  "communication_style": "直接、数据驱动、不喜欢废话",
+  "decision_patterns": "先看数据再下判断。偏好 MVP 验证而非完美方案",
+  "recurring_topics": ["AI 趋势", "竞品分析", "产品架构"],
   "expertise_level": "expert",
   "confidence": 0.78
 }
 ```
 
-**Strict validation**: 4 required fields, minimum length checks (no single-word profiles like "friendly"), topic list must have ≥ 2 items, expertise must be an enum value, confidence must be 0–1.
-
-**Update strategy**: Incremental merge, not overwrite. New observations fuse with existing profile, confidence updated via Bayesian update. One conversation won't overturn the entire user model.
+**更新策略**：增量融合，不是覆盖。新观察和已有画像贝叶斯融合。一次对话不会推翻整个用户模型。
 
 ---
 
-### L5 — Adversarial Validation
+### L5 — 对抗验证
 
-The immune system for the memory engine. Triggers automatically after every write:
+记忆引擎的免疫系统。每次写入后自动触发：
 
-- **Consistency check**: New entry vs. existing knowledge base. Contradictions are flagged, not silently overwritten.
-- **Regression protection**: After skill updates, backtest against top-5 historical questions. If quality drops, rollback.
-- **Decay**: Linear decay, `access_count -= 1` every 7 days for untouched entries. An entry with `access_count = 10` reaches zero in 70 days — predictable, unlike exponential decay that never reaches zero.
+- **一致性检查**：新条目 vs 已有知识库。矛盾会被标记，不会被悄悄覆盖。
+- **回归保护**：技能更新后，对历史 Top-5 问题回测。质量下降则回滚。
+- **衰减**：线性衰减，未使用的条目每 7 天 `access_count -= 1`。access_count = 10 的条目 70 天归零 — 可预测，不像指数衰减永远不到零。
 
-**L5 is 100% rule-based. Zero LLM calls.** The validation layer cannot depend on LLM — otherwise LLM hallucinations would infect validation results.
+**L5 100% 基于规则，零 LLM 调用。** 验证层不能依赖 LLM — 否则 LLM 幻觉会感染验证结果。
 
 ---
 
-## LLM Tiered Degradation
+## LLM 分层降级策略
 
-| Layer | Operation | Compute | Model | Frequency |
-|-------|-----------|---------|-------|-----------|
-| L0 | Vector generation | Local | nomic-embed-text (274MB) | Every turn |
-| L0 | BM25 search | Local | SQLite built-in | Every turn |
-| L1 | Experience extraction | Local | qwen2.5:7b (4.7GB) | Every turn |
-| L1 | Quality gating | Rules | — | Every turn |
-| L2 | Clustering | Local | Cosine similarity | Per 5+ experiences |
-| L2 | Skill synthesis | Cloud | Primary model | Infrequent |
-| L3 | MERGE/DEPRECATE/PROMOTE | Rules | — | Periodic |
-| L4 | Profile building | Cloud | Primary model | Infrequent |
-| L5 | Consistency/regression/decay | Rules | — | Every write |
+| 层级 | 操作 | 计算位置 | 模型 | 频率 |
+|------|------|----------|------|------|
+| L0 | 向量生成 | 本地 | nomic-embed-text (274MB) | 每轮 |
+| L0 | BM25 搜索 | 本地 | SQLite 内置 | 每轮 |
+| L1 | 经验提取 | 本地 | qwen2.5:7b (4.7GB) | 每轮 |
+| L1 | 质量门控 | 规则 | — | 每轮 |
+| L2 | 聚类 | 本地 | Cosine 相似度 | 积累 5+ 条 |
+| L2 | 技能合成 | 云端 | 主模型 | 低频 |
+| L3 | MERGE/DEPRECATE/PROMOTE | 规则 | — | 周期性 |
+| L4 | 画像构建 | 云端 | 主模型 | 低频 |
+| L5 | 一致性/回归/衰减 | 规则 | — | 每次写入 |
 
-**High-frequency = local/rules, zero API cost. Low-frequency = cloud LLM.**
+**高频 = 本地/规则，零 API 成本。低频 = 云端 LLM。**
 
-Auto-detection at startup: Ollama available → local-first. No Ollama → everything goes through cloud.
+启动时自动检测：有 Ollama → 本地优先。没有 Ollama → 全部走云端。
+
+---
+
+## 10 个 CXO 角色模板
+
+一条命令创建一个专业 AI 员工：
 
 ```bash
-LEAPER_LOCAL_URL=http://localhost:11434/v1   # Custom Ollama address
-LEAPER_LOCAL_MODEL=qwen2.5:14b               # Use a larger local model
+leaper init --template cfo
 ```
 
----
+| # | 角色 | 模板 ID | 说明 | 专属技能数 |
+|---|------|---------|------|-----------|
+| 1 | 🎯 CEO Coach — 创业决策教练 | `ceo-coach` | 苏格拉底式提问 + 40 商业框架 | 10 |
+| 2 | 💻 CTO — 技术战略顾问 | `cto` | 技术选型、架构设计、安全审计 | 9 |
+| 3 | 💰 CFO — 财务战略顾问 | `cfo` | 现金流、融资准备、预算、税务 | 9 |
+| 4 | 📣 CMO — 市场增长顾问 | `cmo` | 定位、GTM、获客、竞品监控（含 CRO） | 8 |
+| 5 | ⚙️ COO — 运营执行顾问 | `coo` | OKR 追踪、会议管理、SOP 建设 | 7 |
+| 6 | 🎯 CPO — 产品战略顾问 | `cpo` | PRD 撰写、路线图、用户故事 | 8 |
+| 7 | 👥 CHRO — 人力战略顾问 | `chro` | JD、面试设计、薪酬方案、组织架构 | 8 |
+| 8 | ⚖️ CLO — 法务战略顾问 | `clo` | 合同审核、合规、知识产权 | 7 |
+| 9 | 🧭 CSO — 首席战略官 | `cso` | 行业分析、情景规划、商业模式 | 9 |
+| 10 | 📢 CCO — 品牌传播顾问 | `cco` | 公众号、创始人 IP、舆情、危机公关 | 7 |
 
-## Platform Connectivity (15+ Channels)
-
-Single gateway process connects all platforms. Conversations persist across platforms.
-
-| Platform | Protocol | Config |
-|----------|----------|--------|
-| **Telegram** | Bot API | `TELEGRAM_BOT_TOKEN` |
-| **Discord** | discord.js | `DISCORD_BOT_TOKEN` |
-| **Slack** | Bolt SDK | `SLACK_BOT_TOKEN` + `SLACK_APP_TOKEN` |
-| **WhatsApp** | Baileys (no Business API needed) | `config.yaml` |
-| **Signal** | signal-cli | `config.yaml` |
-| **Feishu** | Open API | `config.yaml` |
-| **DingTalk** | Stream SDK | `config.yaml` |
-| **Matrix** | matrix-nio | `config.yaml` |
-| **Email** | IMAP/SMTP | `config.yaml` |
-| **LINE** | Messaging API | `config.yaml` |
-| **Mattermost** | WebSocket | `config.yaml` |
-| **IRC** | irc-framework | `config.yaml` |
-| **Home Assistant** | REST API | `config.yaml` |
-| **API** | HTTP/WebSocket | Built-in |
-| **CLI** | Local terminal | `leaper chat` |
-
-**Security**: DM pairing codes for unknown senders, user whitelists, group ID whitelists, mention-only mode, tool execution approval.
+**合计 82 个专属技能**，覆盖创业公司从战略到执行的全部核心职能。
 
 ---
 
-## 40+ Built-in Tools
+## 20 个行业适配
 
-### Terminal & Files
-`terminal` · `file_read` · `file_write` · `file_edit` — shell execution with timeout, atomic writes, surgical edits.
+通用模板开箱即用。有行业专属版时自动适配：
 
-### Search & Web
-`web_search` · `web_fetch` · `web_scrape` — degradation chain: Firecrawl → Tavily → DuckDuckGo. Zero-config.
+`ecom` · `adtech` · `invest` · `edu` · `health` · `b2b` · `finance` · `consumer` · `auto` · `mfg` · `realestate` · `energy` · `logistics` · `travel` · `agri` · `construction` · `legal` · `hr` · `fitness` · `media`
 
-### Code & Dev
-`code_execute` · `git` · `github` — sandboxed execution, full Git/GitHub API.
+**150 个模板目录，709 个配置文件。**
 
-### Media
-`image_generation` · `tts` · `vision` · `pdf_reader` — fal.ai / DALL-E / ElevenLabs / multimodal analysis.
+### 三层技能架构
 
-### Automation
-`cron` · `delegation` · `webhook` — scheduled tasks, parallel sub-agents, HTTP callbacks.
+```
+L1 行业技能（21 个）  ← 行业专属知识（如电商的 GMV 分析框架）
+L2 角色技能（10 个）  ← 角色通用能力（如 CFO 的财务建模方法论）
+L3 工位技能（72 个）  ← 具体工作场景（如 CFO 的现金流预测）
+```
 
-All tools support [MCP](https://modelcontextprotocol.io) protocol for extending with third-party tool servers.
+系统自动匹配：选了 CFO + 电商行业 → 加载 `L1-ecom` + `L2-cfo-financial-modeling` + `L3-cfo-cashflow/budget/cost/...`
 
 ---
 
-## TUI Terminal Interface
+## 多 Agent 架构
 
-Full terminal UI, not just readline:
-
-- Multi-line editing for code and long text
-- Slash command auto-completion
-- Conversation history with cross-session persistence
-- Streaming tool call output
-- `Ctrl+C` interrupt and redirect
-- `/new` · `/model` · `/compress` session management
+一个进程运行多个 AI 角色：
 
 ```bash
-leaper chat                    # Start terminal conversation
-leaper chat --model gpt-4o     # Specify model
+leaper init-team    # 交互式向导：添加角色 + Token
+leaper run          # 所有 Agent 同时启动（~1GB 内存）
 ```
 
----
+每个 Agent 独立拥有：
+- **隔离的工作区**（`~/.leaper/agents/{role}/`）
+- **隔离的 brain.db**（记忆不会串）
+- **独立的 Telegram Bot**（一个 Token 对应一个角色）
+- **共享的模型配置**（所有角色用同一个 LLM Provider）
 
-## Cron Scheduling
-
-Built-in scheduler with cron expressions. Tasks run in isolated sessions, results delivered to any connected platform.
-
-```yaml
-cron:
-  daily-report:
-    schedule: "0 8 * * *"
-    task: "Generate today's action items summary"
-    deliver_to: telegram
-```
-
----
-
-## Sub-Agent Delegation
-
-Complex tasks can be split across parallel sub-agents, each with independent context windows:
-
-```
-User: "Analyze these 5 competitors"
-         ↓
-Main Agent → Spawns 5 sub-agents (parallel)
-         ↓
-Main Agent ← Aggregates 5 reports → User
-```
-
----
-
-## Workspace Files
-
-Agent persona, memory, and rules are defined through Markdown files — no code needed:
-
-| File | Purpose | Loading |
-|------|---------|---------|
-| `EGO.md` | Core rules and behavioral boundaries | Always loaded |
-| `SOUL.md` | Values, communication style, expertise | Always loaded |
-| `IDENTITY.md` | One-line identity | Always loaded |
-| `USER.md` | User profile | Always loaded |
-| `MEMORY.md` | Persistent memory | Seed once, then recall on demand |
-| `AGENTS.md` | Multi-agent collaboration rules | Always loaded |
-
-`MEMORY.md` uses **seed-and-recall**: loaded fully on first conversation, then only relevant sections recalled via L0 Hybrid Recall. This solves the "more memory = more expensive context" problem.
-
----
-
-## Model Support
-
-| Provider | Examples | Config |
-|----------|---------|--------|
-| **OpenAI** | GPT-4o, GPT-4.1, o3 | `OPENAI_API_KEY` |
-| **Anthropic** | Claude Opus 4, Sonnet 4 | `ANTHROPIC_API_KEY` |
-| **OpenRouter** | 200+ models | `OPENROUTER_API_KEY` |
-| **Ollama** | qwen2.5, llama3, deepseek-r1 | Local, zero config |
-| **Custom** | Any OpenAI-compatible API | `base_url` + `api_key` |
-
-Failover: automatic fallback when primary model is unavailable.
-
----
-
-## Prerequisites
-
-Before installing, make sure you have:
-
-| Tool | Version | Download | Notes |
-|------|---------|----------|-------|
-| **Python** | ≥ 3.10 | [python.org/downloads](https://www.python.org/downloads/) | ⚠️ Windows: check **"Add python.exe to PATH"** during install |
-| **Git** | any | [git-scm.com/download](https://git-scm.com/download/) | Windows: default options, Next all the way |
-| **Ollama** (optional) | any | [ollama.com/download](https://ollama.com/download) | For local models. Not required if using cloud API |
-
-> 💡 After installing Python and Git on Windows, **close and reopen PowerShell** for PATH changes to take effect.
-
-Verify:
-```bash
-python --version   # Should show 3.10+
-git --version      # Should show any version
-```
-
----
-
-## Quick Install
-
-```bash
-pip install leaper-agent
-```
-
-**No C++ compiler needed. No GPU required.**
-
-```bash
-leaper init                          # Interactive wizard
-leaper init --template ceo-coach     # Create from template
-leaper chat                          # Terminal conversation
-leaper run                           # Start gateway (Telegram, etc.)
-leaper workshop                      # Browse available templates
-```
-
----
-
-## Configuration
-
-```yaml
-# leaper.yaml
-name: 'CEO Coach'
-
-model:
-  provider: openai
-  name: gpt-4o
-
-channel:
-  type: telegram
-
-brain:
-  enabled: true
-  localModel: auto    # auto = detect Ollama | off = cloud only
-```
-
----
-
-## Template System
-
-```bash
-leaper workshop                      # List templates
-leaper init --template ceo-coach     # Install template
-leaper init-team                     # Multi-agent setup (one token per role)
-```
-
-Templates are pre-configured file sets (YAML + Markdown), not hardcoded logic. Fork any template and modify freely.
-
-### 10 CXO Role Templates
-
-| # | Role | Template ID | Description | Skills |
-|---|------|-------------|-------------|--------|
-| 1 | 🎯 CEO Coach | `ceo-coach` | Socratic coaching + 40 business frameworks | 10 |
-| 2 | 💻 CTO | `cto` | Tech strategy, architecture, security audit | 9 |
-| 3 | 💰 CFO | `cfo` | Cash flow, fundraising, budget, tax planning | 9 |
-| 4 | 📣 CMO | `cmo` | Positioning, GTM, acquisition, competitor monitoring | 8 |
-| 5 | ⚙️ COO | `coo` | OKR tracking, meeting management, SOP | 7 |
-| 6 | 🎯 CPO | `cpo` | PRD writing, roadmap, user stories, metrics | 8 |
-| 7 | 👥 CHRO | `chro` | JD writing, interview design, org structure | 8 |
-| 8 | ⚖️ CLO | `clo` | Contract review, compliance, IP strategy | 7 |
-| 9 | 🧭 CSO | `cso` | Industry analysis, scenario planning, business model | 9 |
-| 10 | 📢 CCO | `cco` | Brand comms, founder IP, crisis PR, sentiment | 7 |
-
-**82 specialized skills** across all roles. Each role includes SOUL.md (personality), EGO.md (behavior rules), config.yaml, and L2/L3 skill sets.
-
-### 20 Industry Adaptations
-
-Industry-specific templates auto-adapt when available: `ecom`, `adtech`, `invest`, `edu`, `health`, `b2b`, `finance`, `consumer`, `auto`, `mfg`, `realestate`, `energy`, `logistics`, `travel`, `agri`, `construction`, `legal`, `hr`, `fitness`, `media`.
-
-**150 template directories, 709 configuration files.**
-
-### Three-Layer Skill Architecture
-
-```
-L1 Industry Skills (21)   ← Industry-specific knowledge
-L2 Role Skills (10)       ← Role-level capabilities
-L3 Workstation Skills (72) ← Concrete work scenarios
-```
-
----
-
-## Multi-Agent Architecture
-
-Run multiple AI roles from a single process:
-
-```bash
-leaper init-team    # Interactive wizard: add roles + tokens
-leaper run          # Starts all agents in one process (~1GB RAM)
-```
-
-Each agent gets:
-- **Isolated workspace** (`~/.leaper/agents/{role}/`)
-- **Isolated brain.db** (memories don't cross-contaminate)
-- **Independent Telegram bot** (one token per role)
-- **Shared model config** (all roles use the same LLM provider)
-
-Config example (`~/.leaper/config.yaml`):
+配置示例（`~/.leaper/config.yaml`）：
 ```yaml
 model: claude-sonnet-4-20250514
 agents:
@@ -499,9 +291,109 @@ agents:
 
 ---
 
+## 15+ 平台连接
+
+单进程连接所有平台，对话跨平台持久化。
+
+| 平台 | 协议 | 配置方式 |
+|------|------|----------|
+| **Telegram** | Bot API | `TELEGRAM_BOT_TOKEN` |
+| **Discord** | discord.js | `DISCORD_BOT_TOKEN` |
+| **Slack** | Bolt SDK | `SLACK_BOT_TOKEN` |
+| **WhatsApp** | Baileys | config.yaml |
+| **Signal** | signal-cli | config.yaml |
+| **飞书** | Open API | config.yaml |
+| **钉钉** | Stream SDK | config.yaml |
+| **Matrix** | matrix-nio | config.yaml |
+| **邮件** | IMAP/SMTP | config.yaml |
+| **Home Assistant** | REST API | config.yaml |
+| **API** | HTTP/WebSocket | 内置 |
+| **终端** | 本地 | `leaper chat` |
+
+---
+
+## 40+ 内置工具
+
+| 类别 | 工具 |
+|------|------|
+| **终端 & 文件** | `terminal` · `file_read` · `file_write` · `file_edit` |
+| **搜索 & 网络** | `web_search` · `web_fetch` — 降级链：Firecrawl → Tavily → DuckDuckGo（零配置） |
+| **代码 & 开发** | `code_execute` · `git` · `github` |
+| **媒体** | `image_generation` · `tts` · `vision` · `pdf_reader` |
+| **自动化** | `cron` · `delegation` · `webhook` |
+
+支持 [MCP 协议](https://modelcontextprotocol.io)扩展第三方工具。
+
+---
+
+## 模型支持
+
+| 提供商 | 模型举例 | 配置 |
+|--------|---------|------|
+| **OpenAI** | GPT-4o, GPT-4.1, o3 | `OPENAI_API_KEY` |
+| **Anthropic** | Claude Opus 4, Sonnet 4 | `ANTHROPIC_API_KEY` |
+| **OpenRouter** | 200+ 模型 | `OPENROUTER_API_KEY` |
+| **Ollama** | qwen2.5, llama3, deepseek-r1 | 本地，零配置 |
+| **任意兼容 API** | 聚合平台 / 私有部署 | `base_url` + `api_key` |
+
+模型故障自动切换 fallback。
+
+---
+
+## 前置条件
+
+| 工具 | 版本 | 下载 | 备注 |
+|------|------|------|------|
+| **Python** | ≥ 3.10 | [python.org/downloads](https://www.python.org/downloads/) | ⚠️ Windows 安装时勾选 "Add python.exe to PATH" |
+| **Git** | 任意 | [git-scm.com/download](https://git-scm.com/download/) | 可选，仅开发者需要 |
+| **Ollama**（可选） | 任意 | [ollama.com/download](https://ollama.com/download) | 本地模型用。只用云端 API 则不需要 |
+
+> 💡 Windows 安装 Python 后，**关闭并重新打开 PowerShell** 让 PATH 生效。
+
+---
+
+## 快速安装
+
+```bash
+pip install leaper-agent
+```
+
+**不需要 C++ 编译器。不需要 GPU。**
+
+```bash
+leaper init                          # 交互式向导
+leaper init --template ceo-coach     # 从模板创建
+leaper init-team                     # 多角色团队配置
+leaper chat                          # 终端对话
+leaper run                           # 启动 Gateway（Telegram 等）
+leaper workshop                      # 浏览模板市场
+```
+
+---
+
+## 配置
+
+```yaml
+# leaper.yaml
+name: 'CEO Coach'
+
+model:
+  provider: openai
+  name: gpt-4o
+
+channel:
+  type: telegram
+
+brain:
+  enabled: true
+  localModel: auto    # auto = 检测 Ollama | off = 仅用云端
+```
+
+---
+
 ## DB Schema
 
-`brain.db` — local SQLite, typically < 10MB for 1000+ entries.
+`brain.db` — 本地 SQLite，1000+ 条记忆通常 < 10MB。
 
 ```sql
 CREATE TABLE pages (
@@ -511,35 +403,35 @@ CREATE TABLE pages (
     content TEXT,
     entry_type TEXT,         -- experience | skill | user_model | meta
     confidence REAL,         -- 0.0 - 1.0
-    access_count INTEGER,    -- used for L5 decay
+    access_count INTEGER,    -- L5 衰减用
     last_accessed TEXT,
-    metadata TEXT,           -- JSON extension field
+    metadata TEXT,           -- JSON 扩展字段
     updated_at TEXT
 );
 
 CREATE TABLE chunks (
     id TEXT PRIMARY KEY,
     page_slug TEXT REFERENCES pages(slug),
-    content TEXT             -- chunked content for vector search
+    content TEXT             -- 分块内容，用于向量搜索
 );
 ```
 
 ---
 
-## Environment Variables
+## 环境变量
 
-| Variable | Purpose | Default |
-|----------|---------|---------|
-| `LEAPER_HOME` | Working directory | `~/.leaper` |
-| `LEAPER_LOCAL_URL` | Local Ollama address | `http://localhost:11434/v1` |
-| `LEAPER_LOCAL_MODEL` | Local inference model | `qwen2.5:7b` |
+| 变量 | 用途 | 默认值 |
+|------|------|--------|
+| `LEAPER_HOME` | 工作目录 | `~/.leaper` |
+| `LEAPER_LOCAL_URL` | 本地 Ollama 地址 | `http://localhost:11434/v1` |
+| `LEAPER_LOCAL_MODEL` | 本地推理模型 | `qwen2.5:7b` |
 | `TELEGRAM_BOT_TOKEN` | Telegram Bot Token | — |
 | `OPENAI_API_KEY` | OpenAI API Key | — |
 | `ANTHROPIC_API_KEY` | Anthropic API Key | — |
 
 ---
 
-## Development
+## 开发者
 
 ```bash
 git clone https://github.com/Deepleaper/leaper-agent.git
@@ -548,31 +440,22 @@ python -m venv venv && source venv/bin/activate
 pip install -e ".[all,dev]"
 ```
 
-### DeepBrain Code Structure (~1951 lines)
+### DeepBrain 代码结构（~1951 行）
 
 ```
 agent/
-  leaper_brain.py           # 564 lines — L0 hybrid recall, DB operations
-  leaper_evolution.py       # 992 lines — L1-L5 evolution logic
-  leaper_orchestrator.py    # 137 lines — evolution scheduler
-  leaper_seed_loader.py     #           — workspace file loading + OS injection
+  leaper_brain.py           # 564 行 — L0 混合召回、DB 操作
+  leaper_evolution.py       # 992 行 — L1-L5 进化逻辑
+  leaper_orchestrator.py    # 137 行 — 进化调度器
+  leaper_seed_loader.py     #        — 工作区文件加载 + OS 注入
 
 plugins/memory/deepbrain/
-  provider.py               # 258 lines — Memory Provider interface
+  provider.py               # 258 行 — Memory Provider 接口
   plugin.yaml
 ```
 
-### Extending the Memory Engine
-
-Implement the `MemoryProvider` base class:
-
-1. Create a directory under `plugins/memory/`
-2. Implement `sync_turn()` / `recall()` / `store()`
-3. Declare in `plugin.yaml`
-4. Set `memory.provider: your-provider` in config
-
 ---
 
-## License
+## 开源协议
 
-Apache-2.0 © [Deepleaper](https://www.deepleaper.com)
+Apache-2.0 © [Deepleaper 跃盟科技](https://www.deepleaper.com)
