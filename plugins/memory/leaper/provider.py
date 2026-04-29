@@ -67,9 +67,11 @@ class LeaperMemoryProvider(MemoryProvider):
         leaper_home = str(Path(leaper_home).resolve())
         logger.info("LeaperMemoryProvider: leaper_home=%s, kwargs_hermes_home=%s, env_HERMES_HOME=%s",
                      leaper_home, kwargs.get("hermes_home", "N/A"), os.environ.get("HERMES_HOME", "N/A"))
-        db_path = os.environ.get(
-            "LEAPER_BRAIN_DB",
-            str(Path(leaper_home) / "brain.db"),
+        # Priority: per-agent brain_db_path kwarg > LEAPER_BRAIN_DB env var > default.
+        db_path = (
+            kwargs.get("brain_db_path", "").strip()
+            or os.environ.get("LEAPER_BRAIN_DB", "")
+            or str(Path(leaper_home) / "brain.db")
         )
         db_path = str(Path(db_path).resolve())
         self._db_path = db_path
@@ -78,7 +80,8 @@ class LeaperMemoryProvider(MemoryProvider):
         self.evolution = EvolutionEngine(brain=self.brain)
         self.orchestrator = LeaperOrchestrator(brain=self.brain, evolution=self.evolution)
 
-        workspace = kwargs.get("workspace", "") or kwargs.get("agent_workspace", "")
+        # Priority: per-agent agent_workspace kwarg > generic workspace kwarg.
+        workspace = kwargs.get("agent_workspace", "") or kwargs.get("workspace", "")
         if workspace and not Path(workspace).is_absolute():
             # Relative paths are ambiguous at runtime; fall back to leaper_home
             # so seed loading always uses a predictable, user-owned directory.

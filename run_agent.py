@@ -882,6 +882,8 @@ class AIAgent:
         chat_type: str = None,
         thread_id: str = None,
         gateway_session_key: str = None,
+        agent_workspace: str = "",
+        brain_db_path: str = "",
         skip_context_files: bool = False,
         skip_memory: bool = False,
         session_db=None,
@@ -956,6 +958,8 @@ class AIAgent:
         self._chat_type = chat_type
         self._thread_id = thread_id
         self._gateway_session_key = gateway_session_key  # Stable per-chat key (e.g. agent:main:telegram:dm:123)
+        self._agent_workspace = agent_workspace  # Per-agent workspace directory for memory provider
+        self._brain_db_path = brain_db_path  # Per-agent brain.db path for memory provider
         # Pluggable print function — CLI replaces this with _cprint so that
         # raw ANSI status lines are routed through prompt_toolkit's renderer
         # instead of going directly to stdout where patch_stdout's StdoutProxy
@@ -1664,12 +1668,20 @@ class AIAgent:
                         # Thread gateway session key for stable per-chat Honcho session isolation
                         if self._gateway_session_key:
                             _init_kwargs["gateway_session_key"] = self._gateway_session_key
+                        # Per-agent workspace and brain_db overrides (multi-agent mode).
+                        if self._agent_workspace:
+                            _init_kwargs["agent_workspace"] = self._agent_workspace
+                        if self._brain_db_path:
+                            _init_kwargs["brain_db_path"] = self._brain_db_path
                         # Profile identity for per-profile provider scoping
                         try:
                             from hermes_cli.profiles import get_active_profile_name
                             _profile = get_active_profile_name()
                             _init_kwargs["agent_identity"] = _profile
-                            _init_kwargs["agent_workspace"] = "hermes"
+                            if not self._agent_workspace:
+                                # Fallback: mark workspace as the active profile name so the
+                                # memory provider can distinguish sessions across profiles.
+                                _init_kwargs["agent_workspace"] = _profile or "default"
                         except Exception:
                             pass
                         self._memory_manager.initialize_all(**_init_kwargs)

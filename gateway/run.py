@@ -713,6 +713,16 @@ class GatewayRunner:
         # Key: Platform enum, Value: {"config": platform_config, "attempts": int, "next_retry": float}
         self._failed_platforms: Dict[Platform, Dict[str, Any]] = {}
 
+        # Multi-agent registries — populated during _build_agent_adapters().
+        # In single-agent mode these remain empty and all routing falls through
+        # to the legacy self.adapters dict.
+        # _agents_registry:   agent_id → AgentEntry
+        # _adapter_by_id:     "{platform}:{agent_id}" → adapter instance
+        # _adapter_agent_map: "{platform}:{agent_id}" → agent_id (reverse lookup)
+        self._agents_registry: Dict[str, Any] = {}
+        self._adapter_by_id: Dict[str, Any] = {}
+        self._adapter_agent_map: Dict[str, str] = {}
+
         # Track pending /update prompt responses per session.
         # Key: session_key, Value: True when a prompt is waiting for user input.
         self._update_prompt_pending: Dict[str, bool] = {}
@@ -2142,7 +2152,17 @@ class GatewayRunner:
                 return False
             logger.warning("No messaging platforms enabled.")
             logger.info("Gateway will continue running for cron job execution.")
-        
+
+        # Launch per-agent adapters for multi-agent configurations.
+        # Runs after the global platform loop so per-agent token adapters
+        # are additive to any shared platform configs.
+        try:
+            _agent_connected = await self._build_agent_adapters()
+            if _agent_connected:
+                connected_count += _agent_connected
+        except Exception as _baa_exc:
+            logger.error("_build_agent_adapters failed: %s", _baa_exc, exc_info=True)
+
         # Update delivery router with adapters
         self.delivery_router.adapters = self.adapters
         
@@ -2498,6 +2518,113 @@ class GatewayRunner:
                 if not self._running:
                     return
                 await asyncio.sleep(1)
+
+    async def _build_agent_adapters(self) -> int:
+        """Create per-agent platform adapters for multi-agent configurations.
+
+        Iterates over ``config.agents`` and creates a dedicated adapter instance
+        for each (agent_id, platform) pair that carries a per-agent token.
+        Each adapter uses a closure message-handler so the agent_id is wired into
+        ``_handle_message`` without touching the existing single-agent code path.
+
+        The "default" single-agent entry produced by backward-compat ``from_dict()``
+        is skipped — its adapters are already created by the global platform loop
+        in ``start()``.
+
+        Returns the number of newly connected adapters.
+        """
+        agents = getattr(self.config, "agents", []) or []
+        # Operate only when the user explicitly defined agents in config.yaml.
+        # A sole "default" entry with no workspace path means backward-compat mode.
+        explicit_agents = [
+            a for a in agents
+            if a.id != "default" or a.workspace_path
+        ]
+        if not explicit_agents:
+            return 0
+
+        connected = 0
+        for entry in explicit_agents:
+            self._agents_registry[entry.id] = entry
+            for platform_name, plat_cfg in entry.platforms.items():
+                try:
+                    platform = Platform(platform_name)
+                except ValueError:
+                    logger.warning(
+                        "Agent %r: unknown platform %r — skipping",
+                        entry.id, platform_name,
+                    )
+                    continue
+
+                # Build a PlatformConfig from the per-agent platform dict so we can
+                # create an adapter using the same _create_adapter() factory.
+                from gateway.config import PlatformConfig
+                per_agent_pc = PlatformConfig.from_dict(plat_cfg)
+
+                adapter = self._create_adapter(platform, per_agent_pc)
+                if not adapter:
+                    logger.warning(
+                        "Agent %r: no adapter available for %s — skipping",
+                        entry.id, platform_name,
+                    )
+                    continue
+
+                adapter_key = f"{platform_name}:{entry.id}"
+                _agent_id = entry.id  # capture for closure
+
+                async def _agent_handler(
+                    event: "MessageEvent",
+                    _aid: str = _agent_id,
+                ) -> None:
+                    await self._handle_message(event, _agent_id=_aid)
+
+                adapter.set_message_handler(_agent_handler)
+                adapter.set_fatal_error_handler(self._handle_adapter_fatal_error)
+                adapter.set_session_store(self.session_store)
+                adapter.set_busy_session_handler(self._handle_active_session_busy_message)
+
+                logger.info(
+                    "Connecting agent %r to %s...", entry.id, platform_name,
+                )
+                try:
+                    success = await adapter.connect()
+                    if success:
+                        self._adapter_by_id[adapter_key] = adapter
+                        self._adapter_agent_map[adapter_key] = entry.id
+                        self._sync_voice_mode_state_to_adapter(adapter)
+                        connected += 1
+                        logger.info(
+                            "✓ Agent %r connected to %s", entry.id, platform_name,
+                        )
+                    else:
+                        logger.warning(
+                            "✗ Agent %r failed to connect to %s",
+                            entry.id, platform_name,
+                        )
+                        await self._safe_adapter_disconnect(adapter, platform)
+                except Exception as exc:
+                    logger.error(
+                        "✗ Agent %r / %s error: %s", entry.id, platform_name, exc,
+                    )
+                    await self._safe_adapter_disconnect(adapter, platform)
+
+        return connected
+
+    def _get_platform_adapter(
+        self, platform: "Platform", agent_id: str = ""
+    ) -> "Optional[BasePlatformAdapter]":
+        """Return the adapter for the given platform and agent.
+
+        In multi-agent mode, routes to the per-agent adapter stored in
+        ``_adapter_by_id``.  Falls back to the legacy ``self.adapters`` dict for
+        single-agent configurations and shared platform adapters.
+        """
+        if agent_id:
+            key = f"{platform.value}:{agent_id}"
+            adapter = self._adapter_by_id.get(key)
+            if adapter is not None:
+                return adapter
+        return self.adapters.get(platform)
 
     async def stop(
         self,
@@ -3083,10 +3210,16 @@ class GatewayRunner:
 
         return "pair"
     
-    async def _handle_message(self, event: MessageEvent) -> Optional[str]:
+    async def _handle_message(
+        self, event: "MessageEvent", *, _agent_id: str = ""
+    ) -> "Optional[str]":
         """
         Handle an incoming message from any platform.
-        
+
+        In multi-agent mode ``_agent_id`` is injected via a per-agent closure
+        created by ``_build_agent_adapters()``.  Single-agent callers omit it
+        (defaults to "").
+
         This is the core message processing pipeline:
         1. Check user authorization
         2. Check for commands (/new, /reset, etc.)
@@ -3192,6 +3325,10 @@ class GatewayRunner:
         # forwarded it to the user; now the user's reply goes back via
         # .update_response so the update process can continue.
         _quick_key = self._session_key_for_source(source)
+        # In multi-agent mode, prefix the coordination key with the agent_id so
+        # running-agent tracking and interrupt handling are isolated per agent.
+        if _agent_id and _agent_id != "default":
+            _quick_key = f"{_agent_id}:{_quick_key}"
         _update_prompts = getattr(self, "_update_prompt_pending", {})
         if _update_prompts.get(_quick_key):
             raw = (event.text or "").strip()
@@ -3845,7 +3982,9 @@ class GatewayRunner:
         _run_generation = self._begin_session_run_generation(_quick_key)
 
         try:
-            return await self._handle_message_with_agent(event, source, _quick_key, _run_generation)
+            return await self._handle_message_with_agent(
+                event, source, _quick_key, _run_generation, agent_id=_agent_id
+            )
         finally:
             # If _run_agent replaced the sentinel with a real agent and
             # then cleaned it up, this is a no-op.  If we exited early
@@ -4013,7 +4152,15 @@ class GatewayRunner:
 
         return message_text
 
-    async def _handle_message_with_agent(self, event, source, _quick_key: str, run_generation: int):
+    async def _handle_message_with_agent(
+        self,
+        event,
+        source,
+        _quick_key: str,
+        run_generation: int,
+        *,
+        agent_id: str = "",
+    ):
         """Inner handler that runs under the _running_agents sentinel guard."""
         _msg_start_time = time.time()
         _platform_name = source.platform.value if hasattr(source.platform, "value") else str(source.platform)
@@ -4502,11 +4649,12 @@ class GatewayRunner:
                 run_generation=run_generation,
                 event_message_id=event.message_id,
                 channel_prompt=event.channel_prompt,
+                agent_id=agent_id,
             )
 
             # Stop persistent typing indicator now that the agent is done
             try:
-                _typing_adapter = self.adapters.get(source.platform)
+                _typing_adapter = self._get_platform_adapter(source.platform, agent_id)
                 if _typing_adapter and hasattr(_typing_adapter, "stop_typing"):
                     await _typing_adapter.stop_typing(source.chat_id)
             except Exception:
@@ -9257,6 +9405,7 @@ class GatewayRunner:
         _interrupt_depth: int = 0,
         event_message_id: Optional[str] = None,
         channel_prompt: Optional[str] = None,
+        agent_id: str = "",
     ) -> Dict[str, Any]:
         """
         Run the agent with the given message and context.
@@ -9286,11 +9435,22 @@ class GatewayRunner:
         from run_agent import AIAgent
         import queue
 
+        # Prefix session_key with agent_id so per-agent caches and running-agent
+        # tracking are isolated even when two agents serve the same chat_id.
+        if agent_id and agent_id != "default" and session_key:
+            if not session_key.startswith(f"{agent_id}:"):
+                session_key = f"{agent_id}:{session_key}"
+
+        # Look up the AgentEntry for per-agent workspace / brain_db overrides.
+        _agent_entry = self._agents_registry.get(agent_id) if agent_id else None
+        if _agent_entry is None and self.config.agents:
+            _agent_entry = self.config.agents[0]  # single-agent / default
+
         def _run_still_current() -> bool:
             if run_generation is None or not session_key:
                 return True
             return self._is_session_run_current(session_key, run_generation)
-        
+
         user_config = _load_gateway_config()
         platform_key = _platform_config_key(source.platform)
 
@@ -9590,7 +9750,7 @@ class GatewayRunner:
                 logger.debug("agent:step hook error: %s", _e)
 
         # Bridge sync status_callback → async adapter.send for context pressure
-        _status_adapter = self.adapters.get(source.platform)
+        _status_adapter = self._get_platform_adapter(source.platform, agent_id)
         _status_chat_id = source.chat_id
         _status_thread_metadata = {"thread_id": _progress_thread_id} if _progress_thread_id else None
 
@@ -9665,6 +9825,11 @@ class GatewayRunner:
                     "tools": [],
                 }
 
+            # Apply per-agent model override (config.agents[n].model takes
+            # precedence over the global resolved model).
+            if _agent_entry and _agent_entry.model:
+                model = _agent_entry.model
+
             pr = self._provider_routing
             reasoning_config = self._resolve_session_reasoning_config(
                 source=source,
@@ -9698,7 +9863,7 @@ class GatewayRunner:
             if _want_stream_deltas or _want_interim_consumer:
                 try:
                     from gateway.stream_consumer import GatewayStreamConsumer, StreamConsumerConfig
-                    _adapter = self.adapters.get(source.platform)
+                    _adapter = self._get_platform_adapter(source.platform, agent_id)
                     if _adapter:
                         # Platforms that don't support editing sent messages
                         # (e.g. QQ, WeChat) should skip streaming entirely —
@@ -9822,6 +9987,8 @@ class GatewayRunner:
                     chat_type=source.chat_type,
                     thread_id=source.thread_id,
                     gateway_session_key=session_key,
+                    agent_workspace=_agent_entry.workspace_path if _agent_entry else "",
+                    brain_db_path=_agent_entry.brain_db_path if _agent_entry else "",
                     session_db=self._session_db,
                     fallback_model=self._fallback_model,
                 )
@@ -10733,7 +10900,7 @@ class GatewayRunner:
                 # Restart typing indicator so the user sees activity while
                 # the follow-up turn runs.  The outer _process_message_background
                 # typing task is still alive but may be stale.
-                _followup_adapter = self.adapters.get(source.platform)
+                _followup_adapter = self._get_platform_adapter(source.platform, agent_id)
                 if _followup_adapter:
                     try:
                         await _followup_adapter.send_typing(
@@ -10754,6 +10921,7 @@ class GatewayRunner:
                     _interrupt_depth=_interrupt_depth + 1,
                     event_message_id=next_message_id,
                     channel_prompt=next_channel_prompt,
+                    agent_id=agent_id,
                 )
         finally:
             # Stop progress sender, interrupt monitor, and notification task
@@ -11013,6 +11181,22 @@ async def start_gateway(config: Optional[GatewayConfig] = None, replace: bool = 
     except Exception:
         pass
 
+    # Read templates OTA config from config.yaml
+    _tmpl_cfg: dict = {}
+    try:
+        import yaml as _y
+        _cp = _hermes_home / "config.yaml"
+        if _cp.exists():
+            _tmpl_cfg = (_y.safe_load(_cp.read_text(encoding="utf-8")) or {}).get("templates", {})
+    except Exception:
+        pass
+    _tmpl_auto_update: bool = bool(_tmpl_cfg.get("auto_update", True))
+    _tmpl_check_interval: int = int(_tmpl_cfg.get("check_interval", 86400))
+    _tmpl_registry_url: str = _tmpl_cfg.get(
+        "registry_url",
+        "https://raw.githubusercontent.com/Deepleaper/leaper-templates/main",
+    )
+
     # Centralized logging — agent.log (INFO+), errors.log (WARNING+),
     # and gateway.log (INFO+, gateway-component records only).
     # Idempotent, so repeated calls from AIAgent.__init__ won't duplicate.
@@ -11163,7 +11347,38 @@ async def start_gateway(config: Optional[GatewayConfig] = None, replace: bool = 
         name="cron-ticker",
     )
     cron_thread.start()
-    
+
+    # Template OTA background task — runs immediately then every check_interval seconds
+    _tmpl_update_task: Optional[asyncio.Task] = None
+    if _tmpl_auto_update:
+        async def _template_update_loop() -> None:
+            _registry = _tmpl_registry_url
+            _interval = _tmpl_check_interval
+            while True:
+                try:
+                    def _do_update() -> None:
+                        from agent.leaper_template_updater import TemplateUpdater, load_agents_from_home
+                        updater = TemplateUpdater(registry_url=_registry)
+                        agents = load_agents_from_home()
+                        if not agents:
+                            return
+                        updates = updater.check_for_updates(agents)
+                        if updates:
+                            updater.apply_updates(updates)
+                            for u in updates:
+                                logger.info(
+                                    "Template OTA: updated %s %s → %s",
+                                    u.agent.template_name,
+                                    u.agent.local_version,
+                                    u.remote_version,
+                                )
+                    await asyncio.to_thread(_do_update)
+                except Exception as _exc:
+                    logger.debug("Template OTA check failed: %s", _exc)
+                await asyncio.sleep(_interval)
+
+        _tmpl_update_task = asyncio.create_task(_template_update_loop())
+
     # Wait for shutdown
     await runner.wait_for_shutdown()
 
@@ -11172,6 +11387,14 @@ async def start_gateway(config: Optional[GatewayConfig] = None, replace: bool = 
             logger.error("Gateway exiting with failure: %s", runner.exit_reason)
         return False
     
+    # Cancel template OTA task
+    if _tmpl_update_task is not None and not _tmpl_update_task.done():
+        _tmpl_update_task.cancel()
+        try:
+            await _tmpl_update_task
+        except asyncio.CancelledError:
+            pass
+
     # Stop cron ticker cleanly
     cron_stop.set()
     cron_thread.join(timeout=5)

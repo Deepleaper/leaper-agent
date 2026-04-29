@@ -297,7 +297,7 @@ def _deploy_workspace_files(workspace: Path, name: str, template: str) -> None:
 
     if template_dir:
         copied = []
-        for f in md_files:
+        for f in md_files + ["template.yaml"]:
             src = template_dir / f
             if src.exists():
                 shutil.copy2(src, leaper_home / f)
@@ -757,6 +757,72 @@ def _bootstrap_env(workspace: str) -> None:
     os.environ.setdefault("HERMES_HOME", leaper_home)
 
 
+# ── leaper update ────────────────────────────────────────────────────────────
+
+def cmd_update(workspace: str = ".", force: bool = False, dry_run: bool = False) -> None:
+    """检查并应用模板 OTA 更新。
+
+    leaper update             — 检查并应用所有可用更新
+    leaper update --force     — 强制重新应用（忽略版本号比较）
+    leaper update --dry-run   — 只列出可用更新，不实际更新
+    """
+    _banner()
+    _bootstrap_env(workspace)
+
+    try:
+        from agent.leaper_template_updater import (
+            TemplateUpdater,
+            load_agents_from_home,
+            DEFAULT_REGISTRY_URL,
+        )
+    except ImportError as exc:
+        _cprint(f"[red]❌ 无法加载更新模块：{exc}[/red]")
+        return
+
+    # Read registry_url from global config if set
+    registry_url = DEFAULT_REGISTRY_URL
+    global_path = Path.home() / ".leaper" / "global.yaml"
+    if global_path.exists():
+        try:
+            import yaml
+            gcfg = yaml.safe_load(global_path.read_text(encoding="utf-8")) or {}
+            registry_url = gcfg.get("templates", {}).get("registry_url", registry_url)
+        except Exception:
+            pass
+
+    leaper_home = Path(os.environ.get("LEAPER_HOME", str(Path.home() / ".leaper")))
+    updater = TemplateUpdater(registry_url=registry_url, leaper_home=leaper_home)
+    agents = load_agents_from_home(leaper_home)
+
+    if not agents:
+        _cprint("[yellow]未找到已安装的模板（没有 template.yaml）。[/yellow]")
+        _cprint("请先运行 [cyan]leaper init[/cyan] 或 [cyan]leaper create[/cyan]。")
+        return
+
+    _cprint(f"[dim]检查 {len(agents)} 个 agent 的模板更新...[/dim]")
+    updates = updater.check_for_updates(agents, force=force)
+
+    if not updates:
+        _cprint("[green]✓ 所有模板已是最新版本。[/green]")
+        return
+
+    _cprint(f"\n[bold]发现 {len(updates)} 个可更新模板：[/bold]")
+    for u in updates:
+        _cprint(
+            f"  [cyan]{u.agent.template_name}[/cyan]  "
+            f"[dim]{u.agent.local_version}[/dim] → [green]{u.remote_version}[/green]"
+            f"  [dim]({u.agent.agent_id})[/dim]"
+        )
+
+    if dry_run:
+        _cprint("\n[dim]--dry-run 模式，跳过实际更新。[/dim]")
+        return
+
+    _cprint("\n[dim]正在更新...[/dim]")
+    updater.apply_updates(updates)
+    _cprint(f"\n[green]✅ 已更新 {len(updates)} 个模板。下次对话时自动加载新文件。[/green]\n")
+
+
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 # ── leaper config ─────────────────────────────────────────────────────────────
@@ -899,13 +965,13 @@ def cmd_create(template: str = "", bot_token: str = "", name: str = "") -> None:
     agents_dir = Path.home() / ".leaper" / "agents" / template
     agents_dir.mkdir(parents=True, exist_ok=True)
 
-    # Copy template .md files
+    # Copy template .md files and template.yaml
     import shutil
     tmpl_dir = Path(__file__).parent / "templates" / template
     if tmpl_dir.exists():
         copied = []
         for f in tmpl_dir.iterdir():
-            if f.suffix == ".md":
+            if f.suffix == ".md" or f.name == "template.yaml":
                 shutil.copy2(f, agents_dir / f.name)
                 copied.append(f.name)
         if copied:
@@ -930,6 +996,130 @@ def cmd_create(template: str = "", bot_token: str = "", name: str = "") -> None:
     _cprint(f"   目录：{agents_dir}")
     _cprint(f"\n[bold]启动：[/bold]")
     _cprint(f"  [cyan]leaper run --workspace {agents_dir}[/cyan]\n")
+
+
+# ── leaper init-team ──────────────────────────────────────────────────────────
+
+def cmd_init_team(
+    output: str = "",
+    model: str = "",
+    platform: str = "telegram",
+) -> None:
+    """交互式向导 — 生成多 Agent config.yaml（每个 Agent 独立 bot token）。
+
+    运行后将在 ~/.leaper/config.yaml（或 --output 指定路径）写入
+    包含 agents 列表的多 Agent 配置，可直接用 leaper run 启动。
+
+    Args:
+        output:   输出路径（默认 ~/.leaper/config.yaml）。
+        model:    默认模型名称（所有 Agent 共用，单个 Agent 可在配置中覆盖）。
+        platform: 平台类型，目前仅支持 telegram（默认）。
+    """
+    import shutil as _shutil
+    import yaml as _yaml
+
+    _banner()
+    _cprint("[bold cyan]🚀 Leaper 多 Agent 团队向导[/bold cyan]\n")
+    _cprint("本向导帮助你为每个 Agent 角色配置独立的 Telegram Bot Token。\n")
+
+    leaper_home = Path.home() / ".leaper"
+    leaper_home.mkdir(parents=True, exist_ok=True)
+
+    # ── 选择/确认全局模型 ──────────────────────────────────────────────────────
+    if not model:
+        # Try to read from existing global config
+        global_cfg = {}
+        try:
+            cfg_path = leaper_home / "config.yaml"
+            if cfg_path.exists():
+                global_cfg = _yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
+        except Exception:
+            pass
+        default_model = global_cfg.get("model", "claude-opus-4-7")
+        _cprint("[bold]全局默认模型（每个 Agent 可单独覆盖）：[/bold]")
+        model = _ask("模型名称", default=str(default_model)).strip() or str(default_model)
+
+    # ── 收集 Agent 列表 ────────────────────────────────────────────────────────
+    agents: list[dict] = []
+    _cprint("\n[bold]添加 Agent（输入空行结束）：[/bold]\n")
+
+    while True:
+        idx = len(agents) + 1
+        _cprint(f"  [bold]Agent #{idx}[/bold]")
+        agent_id = _ask("  角色 ID（如 cfo / cto / sales）").strip().lower()
+        if not agent_id:
+            if agents:
+                break
+            _cprint("[yellow]至少需要一个 Agent，请继续。[/yellow]")
+            continue
+        # Sanitise: only alphanumeric and hyphens
+        agent_id = "".join(c if c.isalnum() or c == "-" else "_" for c in agent_id)
+
+        agent_model = _ask(f"  模型（留空=使用全局 {model}）").strip()
+
+        bot_token = _ask(f"  Telegram Bot Token（@BotFather 获取）").strip()
+        if not bot_token:
+            _cprint("[yellow]  Token 为空，已跳过该 Agent。[/yellow]\n")
+            continue
+
+        workspace = str(leaper_home / "agents" / agent_id)
+        brain_db = str(leaper_home / "agents" / agent_id / "brain.db")
+
+        entry: dict = {
+            "id": agent_id,
+            "workspace": workspace,
+            "brain_db": brain_db,
+            "platforms": {
+                platform: {"token": bot_token},
+            },
+        }
+        if agent_model:
+            entry["model"] = agent_model
+
+        agents.append(entry)
+
+        # Create workspace directory and copy template files if available
+        ws_path = Path(workspace)
+        ws_path.mkdir(parents=True, exist_ok=True)
+        tmpl_dir = Path(__file__).parent / "templates" / agent_id
+        if tmpl_dir.exists():
+            for f in tmpl_dir.iterdir():
+                if f.suffix == ".md" or f.name == "template.yaml":
+                    _shutil.copy2(f, ws_path / f.name)
+
+        _cprint(f"  [green]✓ Agent [{agent_id}] 已添加[/green]\n")
+
+        _cprint("  继续添加下一个 Agent？（直接回车 = 结束）")
+
+    if not agents:
+        _cprint("[yellow]未添加任何 Agent，已退出。[/yellow]")
+        return
+
+    # ── 写出 config.yaml ───────────────────────────────────────────────────────
+    config_path = Path(output) if output else leaper_home / "config.yaml"
+
+    # Merge into existing config if present (preserve non-agent keys)
+    existing: dict = {}
+    if config_path.exists():
+        try:
+            existing = _yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+        except Exception:
+            pass
+
+    existing["model"] = model
+    existing["agents"] = agents
+    # Remove any legacy top-level platforms block to avoid confusion
+    existing.pop("platforms", None)
+
+    config_path.write_text(
+        _yaml.dump(existing, allow_unicode=True, default_flow_style=False, sort_keys=False),
+        encoding="utf-8",
+    )
+
+    _cprint(f"\n[green]✅ 多 Agent 配置已写入：{config_path}[/green]")
+    _cprint(f"\n[bold]启动所有 Agent：[/bold]")
+    _cprint(f"  [cyan]leaper run[/cyan]\n")
+    _cprint(f"[dim]每个 Agent 的工作区：{leaper_home / 'agents' / '<agent-id>'}[/dim]\n")
 
 
 # ── leaper list ───────────────────────────────────────────────────────────────
@@ -961,6 +1151,7 @@ def main() -> None:
         fire.Fire(
             {
                 "init": cmd_init,
+                "init-team": cmd_init_team,
                 "run": cmd_run,
                 "chat": cmd_chat,
                 "config": cmd_config,
@@ -968,6 +1159,7 @@ def main() -> None:
                 "list": cmd_list,
                 "workshop": cmd_workshop,
                 "status": cmd_status,
+                "update": cmd_update,
             }
         )
     except KeyboardInterrupt:

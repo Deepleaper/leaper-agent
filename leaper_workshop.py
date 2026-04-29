@@ -78,6 +78,8 @@ def download_template(name: str, target_dir: str) -> list[str]:
     """Copy or download template files into target_dir.
 
     Tries local bundled templates first, then falls back to remote GitHub download.
+    Also assembles 3-layer skill paths (L1 industry + L2 role + L3 workstation)
+    and writes them into the generated config.yaml as skills.external_dirs.
 
     Returns list of filenames written (skips files that already exist).
     Raises RuntimeError if the template cannot be found anywhere.
@@ -87,10 +89,16 @@ def download_template(name: str, target_dir: str) -> list[str]:
 
     local_path = _TEMPLATES_DIR / name
     if local_path.exists() and local_path.is_dir():
-        return _copy_local_template(local_path, target)
+        written = _copy_local_template(local_path, target)
+        # Assemble skills from 3-layer inheritance
+        skill_dirs = _assemble_skills(local_path, _TEMPLATES_DIR)
+        if skill_dirs:
+            _inject_skill_dirs(target / "config.yaml", skill_dirs)
+        return written
 
     try:
-        return _download_remote_template(name, target)
+        written = _download_remote_template(name, target)
+        return written
     except Exception as exc:
         raise RuntimeError(
             f"Template '{name}' not found locally and remote download failed: {exc}"
@@ -106,6 +114,74 @@ def get_template_meta(name: str) -> dict[str, Any] | None:
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
+
+
+# === Skill assembly (3-layer inheritance) ===
+def _assemble_skills(template_dir: Path, templates_root: Path) -> list[str]:
+    """Assemble skill paths from template.yaml (L1 + L2 + L3 with inheritance)."""
+    import yaml
+
+    template_yaml = template_dir / "template.yaml"
+    if not template_yaml.exists():
+        return []
+
+    with open(template_yaml, 'r', encoding='utf-8') as f:
+        meta = yaml.safe_load(f) or {}
+
+    skills_root = templates_root.parent / "skills"
+    skill_paths: list[str] = []
+
+    # Handle inheritance (extends: cfo → load parent's skills first)
+    extends = meta.get("extends")
+    if extends:
+        parent_dir = templates_root / extends
+        parent_skills = _assemble_skills(parent_dir, templates_root)
+        skill_paths.extend(parent_skills)
+
+    # L1: Industry skill (auto from industry field)
+    industry = meta.get("industry")
+    if industry:
+        l1_path = skills_root / "L1-industry" / industry
+        if l1_path.exists():
+            skill_paths.append(str(l1_path))
+
+    # L2 + L3 from skills field
+    skills_cfg = meta.get("skills", {})
+    for l2_name in skills_cfg.get("L2", []):
+        l2_path = skills_root / "L2-role" / l2_name
+        if l2_path.exists():
+            skill_paths.append(str(l2_path))
+
+    for l3_name in skills_cfg.get("L3", []):
+        l3_path = skills_root / "L3-workstation" / l3_name
+        if l3_path.exists():
+            skill_paths.append(str(l3_path))
+
+    # Deduplicate while preserving order
+    seen: set[str] = set()
+    result: list[str] = []
+    for p in skill_paths:
+        if p not in seen:
+            seen.add(p)
+            result.append(p)
+    return result
+
+
+def _inject_skill_dirs(config_path: Path, skill_dirs: list[str]) -> None:
+    """Write skill_dirs into config.yaml under skills.external_dirs."""
+    import yaml
+
+    config: dict = {}
+    if config_path.exists():
+        with open(config_path, 'r', encoding='utf-8') as f:
+            config = yaml.safe_load(f) or {}
+
+    config.setdefault("skills", {})["external_dirs"] = skill_dirs
+
+    with open(config_path, 'w', encoding='utf-8') as f:
+        yaml.dump(config, f, default_flow_style=False, allow_unicode=True)
+    logger.info("Workshop: injected %d skill dirs into %s", len(skill_dirs), config_path)
+
 
 def _load_local_templates() -> list[dict[str, Any]]:
     if not _TEMPLATES_DIR.exists():
@@ -144,7 +220,7 @@ def _fetch_remote_index() -> list[dict[str, Any]]:
 def _copy_local_template(src: Path, target: Path) -> list[str]:
     written: list[str] = []
     for item in sorted(src.iterdir()):
-        if item.name in ("template.yaml", "__pycache__", "__init__.py") or item.name.startswith("."):
+        if item.name in ("__pycache__", "__init__.py") or item.name.startswith("."):
             continue
         dest = target / item.name
         if not dest.exists():

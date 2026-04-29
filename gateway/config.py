@@ -45,6 +45,84 @@ def _normalize_unauthorized_dm_behavior(value: Any, default: str = "pair") -> st
     return default
 
 
+@dataclass
+class AgentEntry:
+    """Configuration for a single Leaper agent in multi-agent mode.
+
+    Each agent has its own workspace directory, brain database, optional model
+    override, and per-platform bot tokens.  Multiple agents of the same platform
+    type run as independent adapters in the gateway — e.g. three Telegram bots
+    each with a different token, mapped to three separate agents.
+    """
+
+    id: str
+    """Unique agent identifier used as a key in registries and session keys."""
+
+    workspace_path: str = ""
+    """Absolute path to the agent's workspace directory (contains .md persona files)."""
+
+    brain_db_path: str = ""
+    """Absolute path to the agent's SQLite brain database."""
+
+    model: str = ""
+    """Model override for this agent (falls back to global model when empty)."""
+
+    template: str = ""
+    """Template name this agent was created from (informational)."""
+
+    platforms: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    """Mapping of platform_name → config dict (must include 'token' for Telegram/Discord)."""
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialise to config.yaml-compatible dict."""
+        result: Dict[str, Any] = {"id": self.id}
+        if self.workspace_path:
+            result["workspace"] = self.workspace_path
+        if self.brain_db_path:
+            result["brain_db"] = self.brain_db_path
+        if self.model:
+            result["model"] = self.model
+        if self.template:
+            result["template"] = self.template
+        if self.platforms:
+            result["platforms"] = self.platforms
+        return result
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "AgentEntry":
+        """Parse from a config.yaml agents list entry."""
+        import os as _os
+        workspace = data.get("workspace", "")
+        if workspace:
+            workspace = str(Path(_os.path.expanduser(workspace)).resolve())
+        brain_db = data.get("brain_db", "") or data.get("brain_db_path", "")
+        if brain_db:
+            brain_db = str(Path(_os.path.expanduser(brain_db)).resolve())
+        return cls(
+            id=str(data["id"]),
+            workspace_path=workspace,
+            brain_db_path=brain_db,
+            model=data.get("model", ""),
+            template=data.get("template", ""),
+            platforms={k: dict(v) if isinstance(v, dict) else {} for k, v in data.get("platforms", {}).items()},
+        )
+
+
+def resolve_agent_for_message(
+    agents: "List[AgentEntry]", platform: str, token: str
+) -> Optional[str]:
+    """Return the agent_id whose platform token matches the given token.
+
+    Used by GatewayRunner to perform adapter-to-agent reverse lookup.
+    Returns None when no match is found (single-agent / default-agent mode).
+    """
+    for agent in agents:
+        plat_cfg = agent.platforms.get(platform, {})
+        if plat_cfg.get("token") == token:
+            return agent.id
+    return None
+
+
 class Platform(Enum):
     """Supported messaging platforms."""
     LOCAL = "local"
@@ -222,11 +300,17 @@ class StreamingConfig:
 class GatewayConfig:
     """
     Main gateway configuration.
-    
+
     Manages all platform connections, session policies, and delivery settings.
+    Supports both single-agent (legacy) and multi-agent modes.
+    In multi-agent mode, ``agents`` is populated and each entry carries its own
+    platform tokens, workspace path, and brain database path.
     """
-    # Platform configurations
+    # Platform configurations (single-agent / legacy mode)
     platforms: Dict[Platform, PlatformConfig] = field(default_factory=dict)
+
+    # Multi-agent roster.  Empty list = single-agent (backward-compat) mode.
+    agents: "List[AgentEntry]" = field(default_factory=list)
     
     # Session reset policies by type
     default_reset_policy: SessionResetPolicy = field(default_factory=SessionResetPolicy)
@@ -266,7 +350,28 @@ class GatewayConfig:
     session_store_max_age_days: int = 90
 
     def get_connected_platforms(self) -> List[Platform]:
-        """Return list of platforms that are enabled and configured."""
+        """Return list of platforms that are enabled and configured.
+
+        In multi-agent mode, merges platforms from all agent entries so that
+        the gateway knows which adapters to instantiate.
+        """
+        # Multi-agent mode: collect unique platforms from agents roster
+        if self.agents:
+            seen: set = set()
+            connected: List[Platform] = []
+            for agent in self.agents:
+                for plat_name, plat_cfg in agent.platforms.items():
+                    if not plat_cfg.get("token") and not plat_cfg.get("enabled"):
+                        continue
+                    try:
+                        p = Platform(plat_name)
+                        if p not in seen:
+                            seen.add(p)
+                            connected.append(p)
+                    except ValueError:
+                        pass
+            return connected
+
         connected = []
         for platform, config in self.platforms.items():
             if not config.enabled:
@@ -352,10 +457,11 @@ class GatewayConfig:
         return self.default_reset_policy
     
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        result = {
             "platforms": {
                 p.value: c.to_dict() for p, c in self.platforms.items()
             },
+            "agents": [a.to_dict() for a in self.agents],
             "default_reset_policy": self.default_reset_policy.to_dict(),
             "reset_by_type": {
                 k: v.to_dict() for k, v in self.reset_by_type.items()
@@ -374,7 +480,8 @@ class GatewayConfig:
             "streaming": self.streaming.to_dict(),
             "session_store_max_age_days": self.session_store_max_age_days,
         }
-    
+        return result
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "GatewayConfig":
         platforms = {}
@@ -427,8 +534,42 @@ class GatewayConfig:
         except (TypeError, ValueError):
             session_store_max_age_days = 90
 
+        # Parse multi-agent roster.
+        # When the `agents` key is absent, synthesise a single default agent from the
+        # top-level `platforms` block so that existing single-agent config.yaml files
+        # continue to work without modification.
+        agents: List[AgentEntry] = []
+        raw_agents = data.get("agents", [])
+        if isinstance(raw_agents, list) and raw_agents:
+            for a in raw_agents:
+                if isinstance(a, dict) and "id" in a:
+                    try:
+                        agents.append(AgentEntry.from_dict(a))
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning("Skipping invalid agent entry %r: %s", a.get("id"), exc)
+        else:
+            # Backward-compat: wrap existing platform configs into a single default agent.
+            import os as _os
+            leaper_home = get_hermes_home()
+            default_workspace = str(Path(_os.path.expanduser(str(leaper_home))).resolve())
+            default_brain_db = str(Path(default_workspace) / "brain.db")
+            platform_tokens: Dict[str, Dict[str, Any]] = {}
+            for plat, plat_cfg in platforms.items():
+                token = getattr(plat_cfg, "token", "") or plat_cfg.extra.get("token", "")
+                if token:
+                    platform_tokens[plat.value] = {"token": token}
+            agents.append(
+                AgentEntry(
+                    id="default",
+                    workspace_path=default_workspace,
+                    brain_db_path=default_brain_db,
+                    platforms=platform_tokens,
+                )
+            )
+
         return cls(
             platforms=platforms,
+            agents=agents,
             default_reset_policy=default_policy,
             reset_by_type=reset_by_type,
             reset_by_platform=reset_by_platform,
