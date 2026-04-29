@@ -163,13 +163,21 @@ The immune system. Triggers after every write:
 
 ---
 
-## 10 CXO Role Templates
+## CXO Role Templates
 
-One command to create a professional AI employee:
+### Built-in Template
+
+CEO Coach is bundled with the framework — works immediately after install:
 
 ```bash
-leaper init --template cfo
+leaper init --template ceo-coach
 ```
+
+**🎯 CEO Coach**: Socratic questioning + 40 business frameworks + six-layer memory evolution. Doesn't decide for you — helps you think clearly.
+
+### Template Marketplace (10 CXO Roles)
+
+The other 9 roles are available via `leaper workshop`:
 
 | # | Role | Template ID | What It Does | Skills |
 |---|------|-------------|--------------|--------|
@@ -185,8 +193,6 @@ leaper init --template cfo
 | 10 | 📢 CCO | `cco` | Brand comms, founder IP, crisis PR, sentiment | 7 |
 
 **82 specialized skills** covering every core function from strategy to execution.
-
-Each template includes: SOUL.md (personality), EGO.md (behavioral rules), config.yaml, L2/L3 skill sets, and a pre-configured brain.
 
 ---
 
