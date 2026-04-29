@@ -190,20 +190,20 @@ Each template includes: SOUL.md (personality), EGO.md (behavioral rules), config
 
 ---
 
-## 20 Industry Adaptations
+## Industry Adaptations (Pro)
 
-Generic templates work out of the box. When industry-specific versions exist, the system auto-selects them:
+Generic templates work out of the box. Industry-specific versions provide deeper domain knowledge and workflows:
 
 `ecom` · `adtech` · `invest` · `edu` · `health` · `b2b` · `finance` · `consumer` · `auto` · `mfg` · `realestate` · `energy` · `logistics` · `travel` · `agri` · `construction` · `legal` · `hr` · `fitness` · `media`
 
-**150 template directories. 709 configuration files.**
+**20 industries × 7 roles = 140 industry templates.** Available through Leaper Pro subscription.
 
 ### Three-Layer Skill Architecture
 
 ```
-L1 Industry Skills (21)    ← Domain knowledge (e.g., ecommerce GMV analysis)
-L2 Role Skills (10)        ← Role capabilities (e.g., CFO financial modeling)
-L3 Workstation Skills (72) ← Concrete scenarios (e.g., CFO cash flow forecasting)
+L1 Industry Skills (21)    ← Domain knowledge (e.g., ecommerce GMV analysis)   [Pro]
+L2 Role Skills (10)        ← Role capabilities (e.g., CFO financial modeling)   [Open Source]
+L3 Workstation Skills (72) ← Concrete scenarios (e.g., CFO cash flow forecast) [Open Source]
 ```
 
 Automatic matching: CFO + ecommerce → loads `L1-ecom` + `L2-cfo-financial-modeling` + `L3-cfo-cashflow/budget/cost/...`

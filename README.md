@@ -238,20 +238,20 @@ leaper init --template cfo
 
 ---
 
-## 20 个行业适配
+## 行业适配（Pro）
 
-通用模板开箱即用。有行业专属版时自动适配：
+通用模板开箱即用。行业专属版提供更精准的领域知识和工作流：
 
 `ecom` · `adtech` · `invest` · `edu` · `health` · `b2b` · `finance` · `consumer` · `auto` · `mfg` · `realestate` · `energy` · `logistics` · `travel` · `agri` · `construction` · `legal` · `hr` · `fitness` · `media`
 
-**150 个模板目录，709 个配置文件。**
+**20 个行业 × 7 个角色 = 140 个行业模板。** 通过 Leaper Pro 订阅获取。
 
 ### 三层技能架构
 
 ```
-L1 行业技能（21 个）  ← 行业专属知识（如电商的 GMV 分析框架）
-L2 角色技能（10 个）  ← 角色通用能力（如 CFO 的财务建模方法论）
-L3 工位技能（72 个）  ← 具体工作场景（如 CFO 的现金流预测）
+L1 行业技能（21 个）  ← 行业专属知识（如电商的 GMV 分析框架）    [Pro]
+L2 角色技能（10 个）  ← 角色通用能力（如 CFO 的财务建模方法论）  [开源]
+L3 工位技能（72 个）  ← 具体工作场景（如 CFO 的现金流预测）      [开源]
 ```
 
 系统自动匹配：选了 CFO + 电商行业 → 加载 `L1-ecom` + `L2-cfo-financial-modeling` + `L3-cfo-cashflow/budget/cost/...`
