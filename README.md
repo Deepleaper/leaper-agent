@@ -263,7 +263,7 @@ display:
 
 ## 致谢
 
-基于 [Hermes Agent](https://github.com/NousResearch/hermes-agent)（MIT, Nous Research）构建。增加了六层记忆引擎、模板系统和多 Agent 架构。
+基于开源社区（MIT）构建。核心差异化：六层记忆引擎、模板系统和多 Agent 架构。
 
 ---
 
