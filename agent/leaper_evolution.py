@@ -301,7 +301,9 @@ class EvolutionEngine:
             parts.append("[Leaper Brain — Recalled Knowledge]")
             for i, r in enumerate(results, 1):
                 snippet = r["content"][:300].replace("\n", " ")
-                label = f"[{r['namespace']}|{r.get('entry_type', 'raw')}]"
+                ct = r.get("claim_type", "observation")
+                conf = r.get("confidence", 0.5)
+                label = f"[{ct}|{r.get('entry_type', 'raw')}|conf={conf:.1f}]"
                 parts.append(f"{i}. {label} {snippet}")
         if extra_context:
             parts.append(extra_context)
@@ -398,6 +400,8 @@ evidence: 从用户原文中摘录支持该知识点的关键句子
             "failure_recovery": None,
             "efficiency_tip": None,
             "new_knowledge": None,
+            "claim_type": "observation",
+            "evidence": _truncate(user_msg, 200) if complexity != "trivial" else None,
         }
 
     def _passes_quality_gate(self, exp: dict[str, Any]) -> bool:
@@ -665,7 +669,7 @@ evidence: 从用户原文中摘录支持该知识点的关键句子
         )
         return ok
 
-    def _store_skill(self, skill: dict[str, Any]) -> str:
+    def _store_skill(self, skill: dict[str, Any], supersedes: str | None = None) -> str:
         desc = skill.get("description") or skill.get("name", "")
         return self.brain.learn(
             content=desc,
@@ -675,6 +679,9 @@ evidence: 从用户原文中摘录支持该知识点的关键句子
             entry_type="skill",
             confidence=skill.get("confidence", 0.5),
             metadata=skill,
+            claim_type="inference",
+            evidence=skill.get("procedure", ""),
+            supersedes=supersedes,
         )
 
     # ── L3: Skill Evolve ──────────────────────────────────────────────────────
@@ -746,7 +753,7 @@ evidence: 从用户原文中摘录支持该知识点的关键句子
                             if sid:
                                 self.brain.update_status(sid, "deprecated")
                                 processed.add(sid)
-                        new_id = self._store_skill(merged)
+                        new_id = self._store_skill(merged, supersedes=si_id or sj_id)
                         if new_id:
                             merged_ids.append(new_id)
                         # only exit inner loop after a successful merge; if merge
@@ -995,6 +1002,7 @@ evidence: 从用户原文中摘录支持该知识点的关键句子
             entry_type="user_trait",
             confidence=profile.get("confidence", 0.5),
             metadata=profile,
+            claim_type="inference",
         )
 
     def inject_user_model_to_prompt(self, min_confidence: float = 0.5) -> str:
@@ -1116,12 +1124,20 @@ evidence: 从用户原文中摘录支持该知识点的关键句子
         return issues
 
     def _apply_time_decay(self) -> int:
-        """Apply confidence decay: 30d ×0.9, 90d ×0.7."""
+        """Apply confidence decay: 30d ×0.9, 90d ×0.7. Also expire entries past valid_until."""
         now = datetime.now(timezone.utc)
+        now_str = now.isoformat()
         all_entries = self.brain.get_entries(status="active", limit=500)
         decayed = 0
 
         for entry in all_entries:
+            # Check validity expiry
+            valid_until = entry.get("valid_until")
+            if valid_until and valid_until < now_str:
+                self.brain.update_status(entry["id"], "expired")
+                decayed += 1
+                continue
+
             last_str = entry.get("updated_at") or entry.get("created_at", "")
             try:
                 last_dt = datetime.fromisoformat(last_str.replace("Z", "+00:00"))
