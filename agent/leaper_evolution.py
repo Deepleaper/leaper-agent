@@ -337,10 +337,21 @@ Assistant: {_truncate(assistant_msg, 800)}
   "successful_strategy": "助手用了什么有效策略（如没有则null）",
   "failure_recovery": "失败后如何恢复（如无失败则null）",
   "efficiency_tip": "提效技巧或捷径（如无则null）",
-  "new_knowledge": "这轮对话中出现的新知识点（如无则null）"
+  "new_knowledge": "这轮对话中出现的新知识点（如无则null）",
+  "claim_type": "fact/inference/preference/constraint/observation",
+  "evidence": "支持该结论的原文引用（≤200字，如无则null）"
 }}
 
-判断标准：
+claim_type 判断标准：
+- fact: 用户明确陈述的客观事实
+- inference: 从对话推断出的判断
+- preference: 用户的偏好/习惯
+- constraint: 用户声明的约束/红线
+- observation: 一般观察，无法归入以上类别
+
+evidence: 从用户原文中摘录支持该知识点的关键句子
+
+其他判断标准：
 - task_success: 助手是否有效回应了用户需求
 - complexity: trivial=打招呼/简单确认, moderate=有实质讨论, complex=深度分析/多维度
 - 如果对话没有实质内容，summary 写"闲聊"，complexity 写"trivial"
@@ -469,6 +480,8 @@ Assistant: {_truncate(assistant_msg, 800)}
             entry_type="experience",
             confidence=0.6 if exp.get("task_success") else 0.4,
             metadata=metadata,
+            evidence=exp.get("evidence"),
+            claim_type=exp.get("claim_type", "observation"),
         )
         logger.info("L1 stored experience: %s (topic=%s)", entry_id[:8] if entry_id else "—", topic)
         return entry_id

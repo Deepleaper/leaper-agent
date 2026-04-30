@@ -113,6 +113,12 @@ _MIGRATIONS: list[tuple[str, str]] = [
     ("last_accessed","ALTER TABLE leaper_brain ADD COLUMN last_accessed TEXT"),
     ("metadata",     "ALTER TABLE leaper_brain ADD COLUMN metadata TEXT DEFAULT '{}'"),
     ("status",       "ALTER TABLE leaper_brain ADD COLUMN status TEXT DEFAULT 'active'"),
+    # v1.1 — Knowledge State Runtime fields
+    ("evidence",     "ALTER TABLE leaper_brain ADD COLUMN evidence TEXT"),
+    ("valid_from",   "ALTER TABLE leaper_brain ADD COLUMN valid_from TEXT"),
+    ("valid_until",  "ALTER TABLE leaper_brain ADD COLUMN valid_until TEXT"),
+    ("claim_type",   "ALTER TABLE leaper_brain ADD COLUMN claim_type TEXT DEFAULT 'observation'"),
+    ("supersedes",   "ALTER TABLE leaper_brain ADD COLUMN supersedes TEXT"),
 ]
 
 # NULL-fill after migrations (idempotent, fast on small tables)
@@ -174,6 +180,11 @@ class LeaperBrain:
         entry_type: str = "raw",
         confidence: float = 0.5,
         metadata: dict[str, Any] | None = None,
+        evidence: str | None = None,
+        valid_from: str | None = None,
+        valid_until: str | None = None,
+        claim_type: str = "observation",
+        supersedes: str | None = None,
     ) -> str:
         """Store a knowledge entry. Returns the new entry id."""
         if not content.strip():
@@ -190,15 +201,24 @@ class LeaperBrain:
                 INSERT INTO leaper_brain
                   (id, content, keywords, source, namespace, layer,
                    created_at, updated_at, embedding,
-                   entry_type, confidence, access_count, metadata, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, 0, ?, 'active')
+                   entry_type, confidence, access_count, metadata, status,
+                   evidence, valid_from, valid_until, claim_type, supersedes)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, 0, ?, 'active',
+                        ?, ?, ?, ?, ?)
                 """,
                 (
                     entry_id, content.strip(), json.dumps(keywords),
                     source, namespace, layer, now, now,
                     entry_type, confidence, metadata_json,
+                    evidence, valid_from or now, valid_until, claim_type, supersedes,
                 ),
             )
+            # If this entry supersedes another, mark the old one as deprecated
+            if supersedes:
+                self.conn.execute(
+                    "UPDATE leaper_brain SET status = 'superseded' WHERE id = ?",
+                    (supersedes,),
+                )
             self.conn.commit()
 
         # Async embedding: background thread writes embedding without blocking learn()
@@ -247,9 +267,12 @@ class LeaperBrain:
             "entry_type, confidence, created_at, updated_at, embedding, metadata, status"
         )
 
-        # Build base WHERE filter (namespace / entry_type / status)
-        where_parts: list[str] = ["(status = 'active' OR status IS NULL)"]
-        base_params: list[Any] = []
+        # Build base WHERE filter (namespace / entry_type / status / validity)
+        where_parts: list[str] = [
+            "(status = 'active' OR status IS NULL)",
+            "(valid_until IS NULL OR valid_until > ?)",
+        ]
+        base_params: list[Any] = [_now()]
         if namespace:
             where_parts.append("namespace = ?")
             base_params.append(namespace)
@@ -416,10 +439,11 @@ class LeaperBrain:
                 self.conn.commit()
 
     def update_status(self, entry_id: str, status: str) -> None:
+        now = _now()
         with self._lock:
             self.conn.execute(
-                "UPDATE leaper_brain SET status = ?, updated_at = ? WHERE id = ?",
-                (status, _now(), entry_id),
+                "UPDATE leaper_brain SET status = ?, updated_at = ?, valid_until = ? WHERE id = ?",
+                (status, now, now if status in ("deprecated", "superseded") else None, entry_id),
             )
             self.conn.commit()
 
