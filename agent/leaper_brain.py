@@ -216,8 +216,8 @@ class LeaperBrain:
             # If this entry supersedes another, mark the old one as deprecated
             if supersedes:
                 self.conn.execute(
-                    "UPDATE leaper_brain SET status = 'superseded' WHERE id = ?",
-                    (supersedes,),
+                    "UPDATE leaper_brain SET status = 'superseded', valid_until = ? WHERE id = ?",
+                    (now, supersedes),
                 )
             self.conn.commit()
 
