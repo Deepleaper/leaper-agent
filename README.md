@@ -1,4 +1,4 @@
-# Leaper Agent
+# Leaper Agent v1.0
 
 **会自己进化的 AI 员工框架** — 越用越聪明，不是口号，是工程实现。
 
@@ -9,7 +9,7 @@
 ## 一句话安装
 
 ```bash
-pip install leaper-agent
+pip install leaper-agent==1.0.1
 leaper init
 leaper run
 ```
