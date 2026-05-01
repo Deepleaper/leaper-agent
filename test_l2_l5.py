@@ -1,12 +1,13 @@
 """End-to-end test L2-L5 with 48 real experiences in brain_test_l6.db."""
-import os, sys, json, time
-os.environ['HERMES_HOME'] = r'C:\Users\mingjwan\.leaper'
-sys.path.insert(0, r'C:\Users\mingjwan\.openclaw\agents\ray-cto\workspace\leaper-python')
+import os, sys, json, time, tempfile, shutil
+_tmpdir = tempfile.mkdtemp()
+os.environ['HERMES_HOME'] = _tmpdir
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from agent.leaper_brain import LeaperBrain
 from agent.leaper_evolution import EvolutionEngine
 
-TEST_DB = r'C:\Users\mingjwan\.leaper\brain_test_l6.db'
+TEST_DB = os.path.join(_tmpdir, 'brain_test_l6.db')
 brain = LeaperBrain(TEST_DB)
 evo = EvolutionEngine(brain)
 
@@ -71,4 +72,5 @@ print(f'  Total: {total}, Embedded: {embedded}', flush=True)
 
 db.close()
 brain.close()
+shutil.rmtree(_tmpdir, ignore_errors=True)
 print('\n=== ALL LAYERS DONE ===', flush=True)

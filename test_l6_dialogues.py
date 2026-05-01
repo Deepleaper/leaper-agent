@@ -2,23 +2,59 @@
 Test L0-L5 evolution engine with 200 real CEO Coach dialogues.
 Parse dialogue → feed L1 experience_extract → check quality.
 """
-import os, re, json, time
-os.environ['HERMES_HOME'] = r'C:\Users\mingjwan\.leaper'
+import os, re, json, time, tempfile, shutil
+_tmpdir = tempfile.mkdtemp()
+os.environ['HERMES_HOME'] = _tmpdir
 
 from agent.leaper_brain import LeaperBrain
 from agent.leaper_evolution import EvolutionEngine
 
 # Use a separate test db to not pollute production
-TEST_DB = r'C:\Users\mingjwan\.leaper\brain_test_l6.db'
+TEST_DB = os.path.join(_tmpdir, 'brain_test_l6.db')
 if os.path.exists(TEST_DB):
     os.remove(TEST_DB)
 
 brain = LeaperBrain(TEST_DB)
 evo = EvolutionEngine(brain)
 
-# Parse dialogues
-with open(r'C:\Users\mingjwan\.openclaw\agents\ceo-coach\workspace\war-room\coach-ray-dialogue-200.md', 'r', encoding='utf-8') as f:
-    content = f.read()
+# Inline mock dialogues (replaces external file dependency)
+content = """\
+**#1 [2024-01-01] Ray**
+Should I raise Series C now or wait 6 months for better valuation?
+
+**#2 [2024-01-01] Coach**
+With 14 months runway and 3-6 month fundraising cycles, your real window is 8-11 months. The question is what changes in 6 months that justifies the wait.
+
+**#3 [2024-01-01] Ray**
+We have three competitors who just raised. Our ARR is $2M growing 15% MoM.
+
+**#4 [2024-01-01] Coach**
+Strong growth gives you negotiating leverage now. Waiting risks competitors extending their lead while your differentiation window narrows.
+
+**#5 [2024-01-01] Ray**
+Should I hire a CTO or promote from within?
+
+**#6 [2024-01-01] Coach**
+Promoting signals trust and preserves culture, but brings risk if the person lacks breadth. External hire brings expertise but risks culture fit. What does your team bottleneck look like?
+
+**#7 [2024-01-01] Ray**
+Have we found PMF? Users love it but churn is 8% monthly.
+
+**#8 [2024-01-01] Coach**
+8% monthly churn is 65% annual — that is not PMF. Users loving it but not staying means you are solving a vitamin problem, not a painkiller problem.
+
+**#9 [2024-01-01] Ray**
+Should we pivot the product focus?
+
+**#10 [2024-01-01] Coach**
+Before pivoting, validate whether the churn is due to product gaps or customer segment mismatch. A pivot without that diagnosis risks solving the wrong problem.
+
+**#11 [2024-01-01] Ray**
+I can't sleep. The pressure is overwhelming.
+
+**#12 [2024-01-01] Coach**
+Founder anxiety at this stage is normal but signals a need for support structures. What would make the situation feel more manageable — clarity on one decision, or better delegation?
+"""
 
 # Split into turns
 pattern = r'\*\*#(\d+) \[.*?\] (Ray|Coach)\*\*\s*\n(.*?)(?=\*\*#\d+|\Z)'
@@ -112,4 +148,5 @@ for t, c in by_type:
 db.close()
 
 brain.close()
+shutil.rmtree(_tmpdir, ignore_errors=True)
 print('\n=== DONE ===')

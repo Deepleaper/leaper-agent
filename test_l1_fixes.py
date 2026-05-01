@@ -1,5 +1,6 @@
-import os, time
-os.environ['HERMES_HOME'] = r'C:\Users\mingjwan\.leaper'
+import os, time, tempfile, shutil
+_tmpdir = tempfile.mkdtemp()
+os.environ['HERMES_HOME'] = _tmpdir
 
 # Test 1: topic inference
 from agent.leaper_evolution import _infer_topic, _smart_summary, _estimate_complexity
@@ -29,7 +30,7 @@ print('  PASS: summary >= 80 chars')
 print('\n=== Rich Content Storage ===')
 from agent.leaper_evolution import EvolutionEngine
 from agent.leaper_brain import LeaperBrain
-brain = LeaperBrain(r'C:\Users\mingjwan\.leaper\brain.db')
+brain = LeaperBrain(os.path.join(_tmpdir, 'brain.db'))
 evo = EvolutionEngine(brain)
 
 exp = {
@@ -49,7 +50,7 @@ print(f'  Stored: {entry_id[:8]}')
 
 # Verify content is rich
 import sqlite3
-db = sqlite3.connect(r'C:\Users\mingjwan\.leaper\brain.db')
+db = sqlite3.connect(os.path.join(_tmpdir, 'brain.db'))
 row = db.execute('SELECT content, length(content) as clen FROM leaper_brain WHERE id = ?', (entry_id,)).fetchone()
 print(f'  Content length: {row[1]} chars')
 print(f'  Content preview: {row[0][:200]}')
@@ -73,3 +74,4 @@ print('  PASS: duplicate rejected')
 print('\n=== ALL PASSED ===')
 brain.close()
 db.close()
+shutil.rmtree(_tmpdir, ignore_errors=True)
