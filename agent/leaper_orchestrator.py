@@ -1,141 +1,154 @@
-"""Leaper Orchestrator — counter-based and timer-based evolution trigger.
-
-Triggering rules:
-  Every turn   → L1 (experience_extract + store)
-  Every 5 L1s  → L2 (skill_generate)
-  Every 3 L1s  → L4 (user_model_update)
-  Every 24h    → L3 (skill_evolve) + L5 (validate)
+"""
+LeaperOrchestrator - Main orchestrator tying all Leaper subsystems together.
+Does NOT call the LLM directly; provides context and processes results.
 """
 
 from __future__ import annotations
 
-import logging
-import threading
-import time
-from typing import TYPE_CHECKING, Any
+import os
+from typing import Any
 
-if TYPE_CHECKING:
-    from agent.leaper_brain import LeaperBrain
-    from agent.leaper_evolution import EvolutionEngine
-
-logger = logging.getLogger(__name__)
-
-_L2_EVERY_N_L1 = 5
-_L4_EVERY_N_L1 = 3
-_CRON_MIN_INTERVAL_S = 86400  # 24 h
+from .leaper_brain import LeaperBrain
+from .leaper_evolution import LeaperEvolution
+from .leaper_profile import LeaperProfile
+from .leaper_meta import LeaperMeta
+from .leaper_prompt_builder import LeaperPromptBuilder
+from .leaper_queue_manager import LeaperQueueManager
+from .leaper_session_manager import LeaperSessionManager
 
 
 class LeaperOrchestrator:
-    """Coordinates evolution layer invocations based on turn counts and timers."""
+    """
+    Main orchestrator for the Leaper agent system.
 
-    def __init__(self, brain: "LeaperBrain", evolution: "EvolutionEngine") -> None:
-        self.brain = brain
-        self.evolution = evolution
-        self._lock = threading.Lock()
-        self._turn_count: int = 0
-        # Start at -1 so the first increment produces 0, preventing a modulo-0
-        # false trigger on the very first turn if the > 0 guard is ever removed.
-        self._l1_count: int = -1
-        self._last_cron_ts: float = 0.0
+    Responsibilities:
+    - Initialize all subsystems (brain, evolution, profile, meta, prompt, queue, session)
+    - Handle incoming messages: build context + prompt for external LLM
+    - Process responses: store, extract knowledge, trigger evolution
+    - Does NOT call the LLM (that's Hermes's job)
+    """
 
-    # ── Public API ────────────────────────────────────────────────────────────
+    def __init__(self, agent_id: str, db_path: str, workspace_dir: str) -> None:
+        self.agent_id = agent_id
+        self.db_path = db_path
+        self.workspace_dir = workspace_dir
 
-    def on_turn_complete(
-        self, user_content: str, assistant_content: str
-    ) -> dict[str, Any]:
-        """Called after each conversation turn.
+        # Subsystems (initialized in initialize())
+        self.brain: LeaperBrain | None = None
+        self.evolution: LeaperEvolution | None = None
+        self.profile: LeaperProfile | None = None
+        self.meta: LeaperMeta | None = None
+        self.prompt_builder: LeaperPromptBuilder | None = None
+        self.queue: LeaperQueueManager | None = None
+        self.session_manager: LeaperSessionManager | None = None
+        self._initialized = False
 
-        Increments turn counter synchronously, then dispatches all LLM-calling
-        work (L1/L2/L4) to a background thread so the caller is never blocked.
-        Returns {} immediately; results are logged inside the background thread.
+    async def initialize(self) -> None:
+        """Create and initialize all subsystems."""
+        if self._initialized:
+            return
+
+        # Ensure workspace exists
+        os.makedirs(self.workspace_dir, exist_ok=True)
+
+        # Core brain
+        self.brain = LeaperBrain(db_path=self.db_path, agent_id=self.agent_id)
+        await self.brain.initialize()
+
+        # Knowledge evolution
+        self.evolution = LeaperEvolution(brain=self.brain)
+
+        # Profile system
+        self.profile = LeaperProfile(brain=self.brain)
+
+        # Meta/health assessment
+        self.meta = LeaperMeta(brain=self.brain)
+
+        # Prompt builder
+        self.prompt_builder = LeaperPromptBuilder(
+            workspace_dir=self.workspace_dir,
+            brain=self.brain,
+        )
+
+        # Message queue
+        self.queue = LeaperQueueManager()
+
+        # Session manager
+        sessions_dir = os.path.join(os.path.dirname(self.db_path), "sessions")
+        self.session_manager = LeaperSessionManager(sessions_dir=sessions_dir)
+
+        self._initialized = True
+
+    def _check_initialized(self) -> None:
+        if not self._initialized:
+            raise RuntimeError("Orchestrator not initialized. Call initialize() first.")
+
+    async def handle_message(self, session_id: str, user_message: str) -> str:
         """
-        with self._lock:
-            self._turn_count += 1
+        Full agent loop for an incoming message.
 
-        # Run L1 extraction and downstream L2/L4 in a background thread to
-        # avoid blocking the caller with synchronous LLM calls.
-        def _run_evolution() -> None:
-            l1_stored = False
-            try:
-                exp = self.evolution.experience_extract(user_content, assistant_content)
-                exp_id = self.evolution.store_experience(exp)
-                l1_stored = bool(exp_id)
-                logger.info(
-                    "Orchestrator L1: stored=%s complexity=%s success=%s",
-                    l1_stored, exp.get("complexity"), exp.get("task_success"),
-                )
-            except Exception as e:
-                logger.warning("Orchestrator L1 error: %s", e)
+        Flow: queue → recall → prompt → return prompt string.
+        The actual LLM call is external (Hermes). This returns the assembled prompt/context.
+        """
+        self._check_initialized()
 
-            with self._lock:
-                if l1_stored:
-                    self._l1_count += 1
-                l1_count = self._l1_count
+        # 1. Enqueue message
+        await self.queue.enqueue(session_id=session_id, message=user_message)
 
-            # ── L2 every 5 L1s ────────────────────────────────────────────────
-            if l1_count > 0 and l1_count % _L2_EVERY_N_L1 == 0:
-                try:
-                    skills = self.evolution.skill_generate()
-                    logger.info("Orchestrator L2: generated %d skills", len(skills))
-                except Exception as e:
-                    logger.warning("Orchestrator L2 error: %s", e)
+        # 2. Recall relevant knowledge
+        recalled = await self.brain.recall(query=user_message, limit=5)
 
-            # ── L4 every 3 L1s ────────────────────────────────────────────────
-            if l1_count > 0 and l1_count % _L4_EVERY_N_L1 == 0:
-                try:
-                    profile = self.evolution.user_model_update()
-                    logger.info(
-                        "Orchestrator L4: user model updated (expertise=%s)",
-                        profile.get("expertise_level"),
-                    )
-                except Exception as e:
-                    logger.warning("Orchestrator L4 error: %s", e)
+        # 3. Build prompt with context
+        prompt = await self.prompt_builder.build(query=user_message, session_id=session_id)
 
-        threading.Thread(target=_run_evolution, daemon=True).start()
-        return {}
+        # 4. Append recalled memories to prompt
+        if recalled:
+            memory_block = "\n\n## 相关记忆\n"
+            for entry in recalled:
+                memory_block += f"- [{entry.get('category', 'general')}] {entry['content'][:200]}\n"
+            prompt += memory_block
 
-    def on_cron(self) -> dict[str, Any]:
-        """Called by a scheduler (e.g., CronCreate). Runs L3 + L5 if 24h have passed."""
-        now = time.time()
-        with self._lock:
-            elapsed = now - self._last_cron_ts
-            if elapsed < _CRON_MIN_INTERVAL_S:
-                hours_left = (_CRON_MIN_INTERVAL_S - elapsed) / 3600
-                logger.debug("Orchestrator cron: skipped (%.1fh remaining)", hours_left)
-                return {"skipped": True, "hours_until_next": round(hours_left, 1)}
-            self._last_cron_ts = now
+        return prompt
 
-        results: dict[str, Any] = {}
+    async def on_response(self, session_id: str, user_msg: str, assistant_msg: str) -> None:
+        """
+        Post-response processing: store messages and trigger knowledge extraction.
+        """
+        self._check_initialized()
 
-        # ── L3 ────────────────────────────────────────────────────────────────
-        try:
-            l3_result = self.evolution.skill_evolve()
-            results["l3"] = l3_result
-            logger.info("Orchestrator L3: %s", l3_result)
-        except Exception as e:
-            logger.warning("Orchestrator L3 error: %s", e)
-            results["l3"] = {"error": str(e)}
+        # Store messages
+        await self.brain.store_message(session_id=session_id, role="user", content=user_msg)
+        await self.brain.store_message(session_id=session_id, role="assistant", content=assistant_msg)
 
-        # ── L5 ────────────────────────────────────────────────────────────────
-        try:
-            l5_result = self.evolution.validate()
-            results["l5"] = l5_result
-            logger.info("Orchestrator L5: %s", l5_result)
-        except Exception as e:
-            logger.warning("Orchestrator L5 error: %s", e)
-            results["l5"] = {"error": str(e)}
+        # Extract knowledge from the exchange
+        conversation = [
+            {"role": "user", "content": user_msg},
+            {"role": "assistant", "content": assistant_msg},
+        ]
+        await self.brain.extract_knowledge(conversation)
 
-        return results
+    async def on_session_end(self, session_id: str) -> None:
+        """
+        Trigger evolution when a session ends.
+        """
+        self._check_initialized()
 
-    def get_stats(self) -> dict[str, Any]:
-        with self._lock:
-            # max(0, ...) guards against the -1 sentinel initial value producing
-            # a misleading "1 L1 until L2" display before any L1 is stored.
-            effective = max(0, self._l1_count)
-            return {
-                "turn_count": self._turn_count,
-                "l1_count": self._l1_count,
-                "last_cron_ts": self._last_cron_ts,
-                "next_l2_in": _L2_EVERY_N_L1 - (effective % _L2_EVERY_N_L1),
-                "next_l4_in": _L4_EVERY_N_L1 - (effective % _L4_EVERY_N_L1),
-            }
+        # Run full evolution cycle
+        await self.evolution.run_full_evolution()
+
+        # Update profile from new entries
+        await self.profile.infer_from_entries(agent_id=self.agent_id)
+
+    async def shutdown(self) -> None:
+        """Gracefully shut down all subsystems."""
+        if self.brain:
+            await self.brain.close()
+
+        self._initialized = False
+        self.brain = None
+        self.evolution = None
+        self.profile = None
+        self.meta = None
+        self.prompt_builder = None
+        self.queue = None
+        self.session_manager = None
