@@ -201,6 +201,21 @@ CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id);
 CREATE INDEX IF NOT EXISTS idx_profiles_agent ON profiles(agent_id);
 CREATE INDEX IF NOT EXISTS idx_profiles_dimension ON profiles(dimension);
 CREATE INDEX IF NOT EXISTS idx_meta_agent ON meta(agent_id);
+
+CREATE TABLE IF NOT EXISTS transitions (
+    id TEXT PRIMARY KEY,
+    agent_id TEXT,
+    entry_id_old TEXT,
+    entry_id_new TEXT,
+    category TEXT,
+    old_content TEXT,
+    new_content TEXT,
+    transition_type TEXT DEFAULT 'update',
+    created_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_transitions_agent ON transitions(agent_id);
+CREATE INDEX IF NOT EXISTS idx_transitions_category ON transitions(category);
 """
 
 # Minimum gate thresholds for knowledge extraction
@@ -325,6 +340,62 @@ class LeaperBrain:
             (status, _now_iso(), entry_id),
         )
         await self.db.commit()
+
+    # ------------------------------------------------------------------
+    # Temporal Transitions
+    # ------------------------------------------------------------------
+
+    async def record_transition(
+        self,
+        old_entry: dict,
+        new_entry: dict,
+        transition_type: str = "update",
+    ) -> str:
+        """Record a knowledge transition (fact changed over time).
+
+        Inspired by Zep's temporal knowledge graph — tracks what was true
+        before and what replaced it, enabling temporal reasoning queries.
+        """
+        trans_id = uuid.uuid4().hex
+        now = _now_iso()
+        await self.db.execute(
+            "INSERT INTO transitions "
+            "(id, agent_id, entry_id_old, entry_id_new, category, "
+            "old_content, new_content, transition_type, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                trans_id,
+                self.agent_id,
+                old_entry.get("id", ""),
+                new_entry.get("id", ""),
+                old_entry.get("category", new_entry.get("category", "")),
+                old_entry.get("content", ""),
+                new_entry.get("content", ""),
+                transition_type,
+                now,
+            ),
+        )
+        await self.db.commit()
+        return trans_id
+
+    async def get_transitions(
+        self, category: str | None = None, limit: int = 20
+    ) -> list[dict]:
+        """Retrieve recent transitions, optionally filtered by category."""
+        clauses = ["agent_id = ?"]
+        params: list[Any] = [self.agent_id]
+        if category:
+            clauses.append("category = ?")
+            params.append(category)
+        params.append(limit)
+        sql = (
+            "SELECT * FROM transitions WHERE "
+            + " AND ".join(clauses)
+            + " ORDER BY created_at DESC LIMIT ?"
+        )
+        async with self.db.execute(sql, params) as cur:
+            rows = await cur.fetchall()
+        return [dict(r) for r in rows]
 
     async def increment_access(self, entry_id: str) -> None:
         now = _now_iso()

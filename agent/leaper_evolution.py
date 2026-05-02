@@ -131,11 +131,18 @@ class LeaperEvolution:
             return False
 
         # Gate 3: Consistency — check for direct contradictions (soft gate)
-        # Contradictions lower confidence but don't block
+        # Contradictions lower confidence but don't block — record as transitions
         conflicts = await self._find_conflicts(entry)
         if conflicts:
             entry["confidence"] = max(0.3, entry["confidence"] - 0.2)
             entry["has_conflicts"] = True
+            # Record temporal transitions for each superseded entry
+            for old_entry in conflicts:
+                await self.brain.record_transition(
+                    old_entry=old_entry,
+                    new_entry=entry,
+                    transition_type="supersede",
+                )
 
         # Gate 4: Actionability — skill entries must contain actionable content
         if entry["category"] == "skill" and len(entry["content"]) < 10:
@@ -182,6 +189,14 @@ class LeaperEvolution:
                 merged["access_count"] = sum(e.get("access_count", 0) for e in cluster)
 
                 consolidated.append(merged)
+
+                # Record consolidation transitions
+                for original in cluster:
+                    await self.brain.record_transition(
+                        old_entry=original,
+                        new_entry=merged,
+                        transition_type="consolidate",
+                    )
 
                 # Mark originals
                 async with aiosqlite.connect(self.brain.db_path) as db:
@@ -478,22 +493,31 @@ class LeaperEvolution:
         """Persist entries to the database."""
         async with aiosqlite.connect(self.brain.db_path) as db:
             for entry in entries:
+                metadata = {}
+                if entry.get("has_conflicts"):
+                    metadata["has_conflicts"] = True
+                if entry.get("source"):
+                    metadata["source"] = entry["source"]
                 await db.execute(
                     """INSERT OR REPLACE INTO entries
-                       (id, content, category, confidence, status, access_count,
-                        source, source_ids, created_at, has_conflicts)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                       (id, agent_id, entry_type, content, category, confidence,
+                        access_count, last_accessed, source_ids, metadata,
+                        created_at, updated_at, status)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         entry["id"],
+                        self.brain.agent_id,
+                        entry.get("source", "knowledge"),
                         entry["content"],
                         entry["category"],
                         entry.get("confidence", 0.5),
-                        entry.get("status", "active"),
                         entry.get("access_count", 0),
-                        entry.get("source", "unknown"),
+                        None,
                         entry.get("source_ids"),
+                        json.dumps(metadata, ensure_ascii=False),
                         entry.get("created_at", datetime.now(timezone.utc).isoformat()),
-                        1 if entry.get("has_conflicts") else 0,
+                        datetime.now(timezone.utc).isoformat(),
+                        entry.get("status", "active"),
                     ),
                 )
             await db.commit()
