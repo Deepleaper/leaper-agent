@@ -62,6 +62,35 @@ def _jaccard(a: set[str], b: set[str]) -> float:
     return len(a & b) / len(a | b)
 
 
+# ---------------------------------------------------------------------------
+# Entity Extraction (lightweight, no external deps)
+# ---------------------------------------------------------------------------
+
+_ENTITY_PATTERNS = [
+    # CamelCase or PascalCase (e.g., LangGraph, CrewAI, DeepBrain)
+    re.compile(r"\b([A-Z][a-z]+(?:[A-Z][a-z]*)+)\b"),
+    # ALL CAPS acronyms 2-6 chars (e.g., API, SDK, MRD)
+    re.compile(r"\b([A-Z]{2,6})\b"),
+    # Chinese proper nouns preceded by markers (rough heuristic)
+    re.compile(r"(?:叫|是|用|即|如|：)([^\s，。、]{2,6})"),
+    # @-mentions or quoted names
+    re.compile(r"[「\"']([^「\"']{2,20})[」\"']"),
+]
+
+
+def extract_entities(text: str) -> set[str]:
+    """Extract lightweight named entities from text for retrieval boosting."""
+    entities: set[str] = set()
+    for pat in _ENTITY_PATTERNS:
+        for m in pat.finditer(text):
+            ent = m.group(1) if pat.groups else m.group(0)
+            # Filter out common English words that happen to be uppercase
+            if ent.isupper() and len(ent) <= 1:
+                continue
+            entities.add(ent.lower())
+    return entities
+
+
 def _now_iso() -> str:
     return datetime.now(TZ_UTC).isoformat()
 
@@ -532,6 +561,7 @@ class LeaperBrain:
                 df[t] = df.get(t, 0) + 1
 
         # Score each entry (BM25-inspired tf-idf)
+        query_entities = extract_entities(query)
         scored: list[tuple[float, int, set[str]]] = []
         for idx, e in enumerate(entries):
             toks = entry_tokens[idx]
@@ -559,6 +589,12 @@ class LeaperBrain:
                 days = 90  # penalize entries with bad timestamps
             decay = math.exp(-0.693 * days / 30)
             score *= decay
+
+            # Entity linking boost: exact entity matches get 30% boost
+            entry_entities = extract_entities(e["content"])
+            entity_overlap = query_entities & entry_entities
+            if entity_overlap:
+                score *= 1.0 + 0.3 * min(len(entity_overlap), 3)
 
             # Small boost for access_count (log scale)
             ac = e.get("access_count", 0) or 0
