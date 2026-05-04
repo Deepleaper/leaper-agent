@@ -324,26 +324,32 @@ class LeaperEvolution:
             if any(s in content for s in context_signals):
                 profile["context"].append(entry["content"])
 
-        # Persist profile
+        # Persist profile using the brain's profiles schema
+        # (agent_id, dimension, key, value, confidence, evidence_ids, updated_at)
+        now = profile["updated_at"]
         async with aiosqlite.connect(self.brain.db_path) as db:
-            await db.execute(
-                """INSERT INTO profiles (user_id, personality, preference, expertise, context, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?)
-                   ON CONFLICT(user_id) DO UPDATE SET
-                     personality = excluded.personality,
-                     preference = excluded.preference,
-                     expertise = excluded.expertise,
-                     context = excluded.context,
-                     updated_at = excluded.updated_at""",
-                (
-                    user_id,
-                    json.dumps(profile["personality"], ensure_ascii=False),
-                    json.dumps(profile["preference"], ensure_ascii=False),
-                    json.dumps(profile["expertise"], ensure_ascii=False),
-                    json.dumps(profile["context"], ensure_ascii=False),
-                    profile["updated_at"],
-                ),
-            )
+            for dimension in ("personality", "preference", "expertise", "context"):
+                items = profile[dimension]
+                if not items:
+                    continue
+                value_json = json.dumps(items, ensure_ascii=False)
+                await db.execute(
+                    """INSERT INTO profiles (id, agent_id, dimension, key, value, confidence, evidence_ids, updated_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                       ON CONFLICT(agent_id, dimension, key) DO UPDATE SET
+                         value = excluded.value,
+                         updated_at = excluded.updated_at""",
+                    (
+                        f"{user_id}_{dimension}",
+                        user_id,
+                        dimension,
+                        "l4_summary",
+                        value_json,
+                        0.8,
+                        "[]",
+                        now,
+                    ),
+                )
             await db.commit()
 
         logger.info(f"L4 Profile: updated for user {user_id}")
