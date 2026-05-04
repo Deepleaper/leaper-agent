@@ -9,9 +9,9 @@ from typing import Any
 
 from agent.memory_provider import MemoryProvider
 
-# Leaper core imports (expected in the same package tree)
-from leaper.brain import LeaperBrain
-from leaper.orchestrator import LeaperOrchestrator
+# P0 fix: correct import paths (agent.leaper_*, not leaper.*)
+from agent.leaper_brain import LeaperBrain
+from agent.leaper_orchestrator import LeaperOrchestrator
 
 
 def _run(coro):
@@ -20,7 +20,6 @@ def _run(coro):
         loop = asyncio.get_running_loop()
     except RuntimeError:
         return asyncio.run(coro)
-    # Already inside a loop — schedule and block (threaded fallback)
     import concurrent.futures
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
         return pool.submit(asyncio.run, coro).result()
@@ -48,20 +47,24 @@ class LeaperMemoryProvider(MemoryProvider):
         # Resolve paths
         home = os.environ.get("HERMES_HOME") or str(Path.home() / ".leaper")
         agent_id = kwargs.get("agent_id", os.environ.get("LEAPER_AGENT_ID", "default"))
-        db_path = os.path.join(home, "agents", agent_id, "leaper.db")
+        db_dir = os.path.join(home, "agents", agent_id)
+        db_path = os.path.join(db_dir, "leaper.db")
+        workspace_dir = kwargs.get("workspace_dir", os.path.join(db_dir, "workspace"))
 
-        self.brain = LeaperBrain(db_path=db_path, agent_id=agent_id)
+        # P1 fix: match LeaperOrchestrator.__init__(agent_id, db_path, workspace_dir)
+        # Orchestrator creates its own Brain internally, so we don't pass brain=
         self.orchestrator = LeaperOrchestrator(
-            brain=self.brain,
             agent_id=agent_id,
-            session_id=session_id,
+            db_path=db_path,
+            workspace_dir=workspace_dir,
         )
 
-        _run(self.brain.initialize())
         _run(self.orchestrator.initialize())
 
+        # Keep a reference to the brain created by orchestrator
+        self.brain = self.orchestrator.brain
+
     def system_prompt_block(self) -> str:
-        # Memory is injected via prefetch, not system prompt
         return ""
 
     def prefetch(self, query: str, session_id: str = "") -> str:
@@ -88,23 +91,40 @@ class LeaperMemoryProvider(MemoryProvider):
     def sync_turn(
         self, user_content: str, assistant_content: str, session_id: str = ""
     ) -> None:
+        # P1 fix: match on_response(session_id, user_msg, assistant_msg)
         if self.orchestrator:
+            sid = session_id or self._session_id
             _run(
                 self.orchestrator.on_response(
-                    user_content=user_content,
-                    assistant_content=assistant_content,
+                    session_id=sid,
+                    user_msg=user_content,
+                    assistant_msg=assistant_content,
                 )
             )
 
     def on_session_end(self, messages: list[dict[str, Any]]) -> None:
+        # P1 fix: match on_session_end(session_id)
         if self.orchestrator:
-            _run(self.orchestrator.on_session_end(messages=messages))
+            _run(self.orchestrator.on_session_end(session_id=self._session_id))
 
     def on_pre_compress(self, messages: list[dict[str, Any]]) -> str:
-        """Extract knowledge from messages before context compression."""
-        if not self.orchestrator:
+        """Extract knowledge from messages before context compression.
+
+        Note: LeaperOrchestrator doesn't have extract_knowledge() directly.
+        Knowledge extraction happens automatically in on_response() via brain.extract_knowledge().
+        For pre-compress, we do a batch extraction through the brain directly.
+        """
+        if not self.brain:
             return ""
-        return _run(self.orchestrator.extract_knowledge(messages=messages))
+        try:
+            _run(self.brain.extract_knowledge(messages))
+            return "leaper: extracted knowledge from compressed messages"
+        except Exception:
+            return ""
+
+    def get_tool_schemas(self) -> list[dict[str, Any]]:
+        """No additional tools exposed by Leaper memory provider."""
+        return []
 
     def shutdown(self) -> None:
         if self.orchestrator:
