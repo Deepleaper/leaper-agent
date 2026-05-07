@@ -65,7 +65,7 @@ def cmd_config(args: argparse.Namespace) -> None:
             current[key] = val
 
     cfg.save_global(current)
-    print("\n✅ Config saved to", cfg.global_file)
+    print("\n[OK] Config saved to", cfg.global_file)
 
 
 def cmd_create(args: argparse.Namespace) -> None:
@@ -73,7 +73,7 @@ def cmd_create(args: argparse.Namespace) -> None:
     cfg = LeaperConfig()
 
     if args.name in cfg.list_agents():
-        print(f"❌ Agent '{args.name}' already exists.")
+        print(f"[ERROR] Agent '{args.name}' already exists.")
         sys.exit(1)
 
     agent_cfg: dict = {
@@ -90,7 +90,7 @@ def cmd_create(args: argparse.Namespace) -> None:
     ws = Path(cfg.get_workspace(args.name))
     ws.mkdir(parents=True, exist_ok=True)
 
-    print(f"✅ Agent '{args.name}' created at {cfg._agent_dir(args.name)}")
+    print(f"[OK] Agent '{args.name}' created at {cfg._agent_dir(args.name)}")
 
 
 def cmd_start(args: argparse.Namespace) -> None:
@@ -107,13 +107,13 @@ def cmd_start(args: argparse.Namespace) -> None:
     elif args.name:
         _start_one(cfg, args.name)
     else:
-        print("❌ Specify agent name or --all")
+        print("[ERROR] Specify agent name or --all")
         sys.exit(1)
 
 
 def _start_one(cfg: LeaperConfig, name: str) -> None:
     if name not in cfg.list_agents():
-        print(f"❌ Agent '{name}' not found.")
+        print(f"[ERROR] Agent '{name}' not found.")
         return
 
     pid_path = _pid_file(cfg, name)
@@ -133,7 +133,7 @@ def _start_one(cfg: LeaperConfig, name: str) -> None:
     )
 
     pid_path.write_text(str(proc.pid))
-    print(f"🚀 Agent '{name}' started (PID {proc.pid})")
+    print(f"[*] Agent '{name}' started (PID {proc.pid})")
 
 
 def cmd_stop(args: argparse.Namespace) -> None:
@@ -149,9 +149,9 @@ def cmd_stop(args: argparse.Namespace) -> None:
 
     try:
         os.kill(pid, signal.SIGTERM)
-        print(f"🛑 Agent '{args.name}' stopped (PID {pid})")
+        print(f"[STOP] Agent '{args.name}' stopped (PID {pid})")
     except OSError as e:
-        print(f"❌ Failed to stop: {e}")
+        print(f"[ERROR] Failed to stop: {e}")
     finally:
         pid_path.unlink(missing_ok=True)
 
@@ -182,7 +182,7 @@ def cmd_status(args: argparse.Namespace) -> None:
     cfg = LeaperConfig()
 
     if args.name not in cfg.list_agents():
-        print(f"❌ Agent '{args.name}' not found.")
+        print(f"[ERROR] Agent '{args.name}' not found.")
         sys.exit(1)
 
     acfg = cfg.load_agent(args.name)
@@ -227,7 +227,7 @@ def cmd_workshop_install(args: argparse.Namespace) -> None:
     (tpl_dir / "template.yaml").write_text(
         f"id: {args.id}\ninstalled_at: {datetime.now().isoformat()}\n"
     )
-    print(f"✅ Template '{args.id}' installed to {tpl_dir}")
+    print(f"[OK] Template '{args.id}' installed to {tpl_dir}")
 
 
 # ── Parser ──────────────────────────────────────────────────
@@ -313,3 +313,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
