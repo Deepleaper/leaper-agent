@@ -12603,6 +12603,12 @@ def main(
     Toolset Examples:
         - "research": Web search, extract, crawl + vision tools
     """
+    import sys, io
+    if sys.platform == 'win32':
+        for _s in ('stdout', 'stderr'):
+            _stream = getattr(sys, _s)
+            if hasattr(_stream, 'buffer'):
+                setattr(sys, _s, io.TextIOWrapper(_stream.buffer, encoding='utf-8', errors='replace'))
     print("🤖 AI Agent with Tool Calling")
     print("=" * 50)
     
