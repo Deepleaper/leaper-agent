@@ -2,9 +2,9 @@
 
 # 🚀 Leaper Agent
 
-### Self-Evolving AI Agent Framework — Multi-Provider, Multi-Agent, with Built-in Memory
+### The Agent Framework That Actually Remembers
 
-### 自进化 AI Agent 框架 — 多模型、多智能体、内置记忆引擎
+### Hermes-Compatible Agent Orchestration + DeepBrain 6-Layer Evolving Memory
 
 [![PyPI version](https://img.shields.io/pypi/v/leaper-agent.svg)](https://pypi.org/project/leaper-agent/)
 [![Downloads](https://img.shields.io/pypi/dm/leaper-agent.svg)](https://pypi.org/project/leaper-agent/)
@@ -12,89 +12,122 @@
 [![License](https://img.shields.io/badge/License-BSL--1.1-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://python.org)
 
-[Website](https://www.deepleaper.com) · [Quick Start](#-quick-start) · [Features](#-features) · [中国版](https://github.com/deepleaper/leaper-agent-cn)
+[Website](https://www.deepleaper.com) · [Quick Start](#-quick-start) · [Why Memory Matters](#-why-memory-matters) · [中国版](https://github.com/deepleaper/leaper-agent-cn)
 
 </div>
 
 ---
 
-## ✨ Why Leaper Agent?
+## 🤔 The Problem
 
-Most agent frameworks treat every conversation as a blank slate. **Leaper Agent** is different — it **learns from every interaction** and gets smarter over time, powered by [DeepBrain](https://github.com/deepleaper/opc-deepbrain)'s 6-layer self-evolving memory.
+Every agent framework gives you tool-calling and multi-model support. **None of them give you real memory.**
 
-Built on top of [Hermes Agent](https://github.com/hermes-agent), enhanced with persistent memory, multi-agent orchestration, and production-ready integrations.
+- CrewAI? Flat key-value store, resets between runs.
+- AutoGen? Conversation history only, no knowledge evolution.
+- LangGraph? Checkpoints, not understanding.
+- Hermes Agent? Skill files on disk — smart, but static.
 
-## 🎯 Features
+**Your agent forgets everything the moment the session ends.**
 
-- 🧠 **Self-Evolving Memory** — DeepBrain 6-layer memory: your agent remembers, consolidates, and evolves
-- 🔌 **Multi-Provider** — OpenAI, Anthropic Claude, Google Gemini, and more. Switch with one line
-- 🤝 **Multi-Agent** — Orchestrate multiple agents with different roles and specialties
-- 🤖 **Telegram Integration** — Deploy as a Telegram bot in minutes
-- 🎭 **Role Templates** — Pre-built personas (CTO, Analyst, Writer…) or create your own
-- 🔧 **MCP Support** — Model Context Protocol for tool/plugin extensibility
-- 📡 **Streaming** — Real-time streaming responses out of the box
+## 💡 The Solution
+
+**Leaper Agent = [Hermes Agent](https://github.com/hermes-agent) base + [DeepBrain](https://github.com/deepleaper/opc-deepbrain) memory engine.**
+
+We took the proven Hermes Agent architecture — its agent loop, tool runtime, and multi-provider support — and integrated DeepBrain's 6-layer self-evolving memory engine. The result: **an agent that gets smarter every time you talk to it.**
+
+```
+Session 1: "I'm building a SaaS product with FastAPI and React."
+Session 2: "What stack should I use for the admin panel?"
+→ Agent recalls your tech choices, suggests FastAPI Admin + React
+→ No manual context injection. It just knows.
+```
+
+## 🧠 Why Memory Matters
+
+| What happens | Without memory | With DeepBrain |
+|-------------|---------------|----------------|
+| You mention your tech stack | Forgotten next session | Remembered forever, evolves over time |
+| You correct the agent | Same mistake tomorrow | Learns the correction, never repeats |
+| You have 50 conversations | Each starts from zero | Agent builds a knowledge graph of YOU |
+| Knowledge conflicts | Silently contradicts itself | 4-Gate system detects & resolves conflicts |
+
+### 6-Layer Memory Architecture
+
+```
+┌─────────────────────────────────────────┐
+│  Layer 5: Meta-Knowledge               │
+│  "I know your tech preferences well,   │
+│   but I'm uncertain about your budget"  │
+├─────────────────────────────────────────┤
+│  Layer 4: Archived — Historical ref     │
+├─────────────────────────────────────────┤
+│  Layer 3: Consolidated — Cross-session  │
+├─────────────────────────────────────────┤
+│  Layer 2: Long-Term — Validated facts   │
+├─────────────────────────────────────────┤
+│  Layer 1: Short-Term — Recent context   │
+├─────────────────────────────────────────┤
+│  Layer 0: Flash — Current session       │
+└─────────────────────────────────────────┘
+    ↑ Auto-promotion via 4-Gate QC ↑
+    (Relevance · Novelty · Consistency · Utility)
+```
+
+This isn't RAG. This isn't vector search. This is **knowledge that evolves** — facts get validated, promoted, consolidated, and the agent develops meta-awareness of what it knows well and what it doesn't.
 
 ## 🚀 Quick Start
 
 ```bash
-# 1. Install
+# Install
 pip install leaper-agent
 
-# 2. Set your API key (pick one)
+# Set your API key
 export OPENAI_API_KEY=sk-xxx
 # or: export ANTHROPIC_API_KEY=sk-ant-xxx
 # or: export GEMINI_API_KEY=xxx
 
-# 3. Create an agent
+# Create an agent with the CEO Coach template
 leaper create my-agent --template ceo-coach
 
-# 4. Start!
+# Start
 leaper start my-agent
 ```
 
-### As a Telegram Bot
+### Deploy as Telegram Bot
 
 ```bash
 leaper create my-bot --template ceo-coach --bot-token YOUR_TELEGRAM_TOKEN
 leaper start my-bot
 ```
 
-### Template Workshop
-
-```bash
-# List available templates
-leaper workshop list
-
-# Install a template
-leaper workshop install cto
-
-# Create agent with installed template
-leaper create my-cto --template cto
-```
-
-```
-
 ## 🏗️ Architecture
 
 ```
 ┌─────────────────────────────────────────┐
-│           Leaper Agent Core             │
-├─────────┬──────────┬───────────────────┤
-│ OpenAI  │ Claude   │ Gemini  │ ...     │
-├─────────┴──────────┴───────────────────┤
-│         Role Templates & Tools          │
+│         Leaper Agent Runtime            │
+│    (Hermes-compatible agent loop)       │
+├─────────┬──────────┬──────────┬────────┤
+│ OpenAI  │ Claude   │ Gemini   │ Ollama │
+├─────────┴──────────┴──────────┴────────┤
+│         Agent Orchestration             │
+│    Role templates · Tool calling        │
 ├─────────────────────────────────────────┤
-│         Multi-Agent Orchestration       │
-├─────────────────────────────────────────┤
-│         🧠 DeepBrain Memory Engine      │
-│    6-Layer Self-Evolving Knowledge      │
-│    ┌──────────────────────────────┐     │
-│    │  4-Gate Quality Control      │     │
-│    │  Relevance → Novelty →       │     │
-│    │  Consistency → Utility       │     │
-│    └──────────────────────────────┘     │
+│      🧠 DeepBrain Memory Engine         │
+│   6-Layer · 4-Gate · Zero Dependencies  │
+│   SQLite-only · 100% Local · Evolving   │
 └─────────────────────────────────────────┘
 ```
+
+**Key difference from Hermes:** Hermes stores skills as static Markdown files. Leaper Agent's DeepBrain **automatically extracts, validates, and evolves knowledge** from every conversation — no manual curation needed.
+
+## ⚡ Hermes Compatibility
+
+Leaper Agent is built on the Hermes Agent foundation. If you're familiar with Hermes, you'll feel at home:
+
+- Same agent loop architecture
+- Same multi-provider model support
+- Same tool runtime
+- **Plus:** 6-layer evolving memory that Hermes doesn't have
 
 ## 🔌 Supported Providers
 
@@ -105,35 +138,20 @@ leaper create my-cto --template cto
 | Google | Gemini 2.0, 2.5 | ✅ |
 | Ollama | Any local model | ✅ |
 
-## 🎭 Built-in Role Templates
+## 📊 vs Other Frameworks
 
-```bash
-# Use a pre-built role
-leaper start cto
-leaper start analyst
-leaper start writer
-
-# Create your own
-leaper-agent role create my-role
-```
-
-## 🧠 Memory in Action
-
-```python
-from leaper_agent import Agent
-
-agent = Agent(provider="openai", model="gpt-4o", memory=True)
-
-# Session 1
-agent.chat("My name is Ray, I'm building an AI startup")
-
-# Session 2 — agent remembers!
-agent.chat("What's my name?")  # → "Your name is Ray..."
-```
+| | Leaper Agent | Hermes | CrewAI | AutoGen | LangGraph |
+|---|:---:|:---:|:---:|:---:|:---:|
+| Memory that evolves | ✅ 6-layer | ❌ Static files | ❌ Flat KV | ❌ Chat history | ❌ Checkpoints |
+| Knowledge quality control | ✅ 4-Gate | ❌ | ❌ | ❌ | ❌ |
+| Meta-knowledge | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Multi-provider | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Zero memory dependencies | ✅ SQLite only | N/A | ❌ Redis/Qdrant | ❌ | ❌ Vector DB |
+| Hermes compatible | ✅ | ✅ | ❌ | ❌ | ❌ |
 
 ## 🇨🇳 China Version / 中国版
 
-For users in China with Chinese LLM providers (通义千问、DeepSeek、文心一言):
+For Chinese LLM providers (DeepSeek, 通义千问, 智谱, Moonshot) + 150 role templates:
 
 ```bash
 pip install leaper-agent-cn
@@ -141,9 +159,17 @@ pip install leaper-agent-cn
 
 → [Leaper Agent CN](https://github.com/deepleaper/leaper-agent-cn)
 
+## 🔗 Ecosystem
+
+| Project | Description |
+|---------|-------------|
+| [OPC DeepBrain](https://github.com/deepleaper/opc-deepbrain) | Standalone memory engine (use in any framework) |
+| [OPC Agent](https://github.com/deepleaper/opc-agent) | Local-first agent with Ollama |
+| [Leaper Agent CN](https://github.com/deepleaper/leaper-agent-cn) | China-optimized with 150 templates |
+
 ## 📄 License
 
-[BSL-1.1](LICENSE) — see LICENSE for details.
+[BSL-1.1](LICENSE) — Free for non-competitive use. Converts to Apache-2.0 after 4 years.
 
 ## 🤝 Contributing
 
@@ -157,8 +183,6 @@ We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 **Built with ❤️ by [Deepleaper Technology / 跃盟科技](https://www.deepleaper.com)**
 
-*Agents that learn. Agents that evolve. Agents that remember.*
+*Other agents forget. Leaper Agent evolves.*
 
 </div>
-
-
