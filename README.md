@@ -45,30 +45,33 @@ export OPENAI_API_KEY=sk-xxx
 # or: export ANTHROPIC_API_KEY=sk-ant-xxx
 # or: export GEMINI_API_KEY=xxx
 
-# 3. Initialize
-leaper-agent init
+# 3. Create an agent
+leaper create my-agent --template ceo-coach
 
-# 4. Chat!
-leaper-agent chat
+# 4. Start!
+leaper start my-agent
 ```
 
 ### As a Telegram Bot
 
 ```bash
-export TELEGRAM_BOT_TOKEN=your-token
-leaper-agent serve --telegram
+leaper create my-bot --template ceo-coach --bot-token YOUR_TELEGRAM_TOKEN
+leaper start my-bot
 ```
 
-### Multi-Agent Setup
+### Template Workshop
 
-```python
-from leaper_agent import Agent, Team
+```bash
+# List available templates
+leaper workshop list
 
-researcher = Agent(role="researcher", provider="openai", model="gpt-4o")
-writer = Agent(role="writer", provider="anthropic", model="claude-sonnet-4-20250514")
+# Install a template
+leaper workshop install cto
 
-team = Team(agents=[researcher, writer])
-result = team.run("Research and write an article about quantum computing")
+# Create agent with installed template
+leaper create my-cto --template cto
+```
+
 ```
 
 ## 🏗️ Architecture
@@ -106,9 +109,9 @@ result = team.run("Research and write an article about quantum computing")
 
 ```bash
 # Use a pre-built role
-leaper-agent chat --role cto
-leaper-agent chat --role analyst
-leaper-agent chat --role writer
+leaper start cto
+leaper start analyst
+leaper start writer
 
 # Create your own
 leaper-agent role create my-role
@@ -157,3 +160,5 @@ We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md).
 *Agents that learn. Agents that evolve. Agents that remember.*
 
 </div>
+
+
