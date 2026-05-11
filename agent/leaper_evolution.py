@@ -418,11 +418,16 @@ class LeaperEvolution:
     # ─── Full Evolution ─────────────────────────────────────────────────
 
     async def run_full_evolution(self) -> dict:
-        """Run L2→L3→L4→L5 in sequence. L1 is triggered externally per conversation."""
+        """Run L2→decay-prune→L3→L4→L5 in sequence. L1 is triggered externally per conversation."""
         summary: dict = {}
 
         l2 = await self.evolve_l2_consolidate()
         summary["l2_consolidated"] = len(l2)
+
+        # Decay pruning: archive stale entries to keep knowledge base lean
+        # Inspired by Anthropic "Dreaming" background memory cleanup pattern
+        archived = await self._archive_stale_entries()
+        summary["decay_archived"] = archived
 
         l3 = await self.evolve_l3_skill()
         summary["l3_promoted"] = len(l3)
@@ -438,6 +443,39 @@ class LeaperEvolution:
 
         logger.info(f"Full evolution complete: {summary}")
         return summary
+
+    async def _archive_stale_entries(self, half_life_days: int = 90) -> int:
+        """Archive entries that have decayed past their effective half-life.
+
+        Entries with category 'skill' are exempt — skills don't decay.
+        Returns the number of archived entries.
+        """
+        archived_count = 0
+        async with aiosqlite.connect(self.brain.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(
+                "SELECT * FROM entries WHERE status = 'active' AND category != 'skill'"
+            )
+            rows = await cursor.fetchall()
+
+            stale_ids = []
+            for row in rows:
+                entry = dict(row)
+                if self._is_stale(entry, half_life_days):
+                    stale_ids.append(entry["id"])
+
+            if stale_ids:
+                placeholders = ",".join("?" * len(stale_ids))
+                await db.execute(
+                    f"UPDATE entries SET status = 'archived' WHERE id IN ({placeholders})",
+                    stale_ids,
+                )
+                await db.commit()
+                archived_count = len(stale_ids)
+
+        if archived_count:
+            logger.info(f"Decay prune: archived {archived_count} stale entries")
+        return archived_count
 
     # ─── Helpers ────────────────────────────────────────────────────────
 
